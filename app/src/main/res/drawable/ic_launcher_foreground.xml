@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    A draining progress ring — the app's core motif, and the same shape the Today screen
+    and the hold timer use.
+
+    Drawn inside the 72x72 safe zone of the 108x108 adaptive-icon canvas so no launcher
+    mask clips it. Also serves as the monochrome/themed-icon layer, where the system
+    re-tints it, so the shape has to read on its own without relying on the lime.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <!-- 260 degrees of arc, starting at 12 o'clock and sweeping clockwise. -->
+    <path
+        android:pathData="M54,28 A26,26 0 1 1 28.4,58.5"
+        android:strokeColor="#C8FF3D"
+        android:strokeWidth="9"
+        android:strokeLineCap="round" />
+</vector>

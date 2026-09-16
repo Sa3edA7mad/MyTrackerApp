@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+    Auto-backup contents for API < 31 (android:fullBackupContent).
+
+    The template shipped this file entirely commented out. Four weeks of training history
+    cannot be regenerated, so what gets backed up is stated explicitly rather than left to
+    the platform default.
+
+    The -wal and -shm companions are included alongside the database: Room runs in WAL mode
+    and recent commits may still live in the write-ahead log when a backup is taken. Backing
+    up tracker.db alone can silently lose the most recent sessions.
+-->
+<full-backup-content>
+    <include domain="database" path="tracker.db" />
+    <include domain="database" path="tracker.db-wal" />
+    <include domain="database" path="tracker.db-shm" />
+    <!-- DataStore preferences live under files/datastore/ -->
+    <include domain="file" path="datastore/" />
+</full-backup-content>
