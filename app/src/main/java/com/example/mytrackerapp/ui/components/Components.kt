@@ -20,9 +20,17 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.progressSemantics
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.Switch
+import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -35,10 +43,12 @@ import androidx.compose.ui.graphics.StrokeCap
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalHapticFeedback
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.clearAndSetSemantics
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -52,6 +62,7 @@ import com.example.mytrackerapp.ui.theme.CatBand
 import com.example.mytrackerapp.ui.theme.CatBodyweight
 import com.example.mytrackerapp.ui.theme.CatStretch
 import com.example.mytrackerapp.ui.theme.CatWarmUp
+import com.example.mytrackerapp.ui.theme.Danger
 import com.example.mytrackerapp.ui.theme.HeatPartial
 import com.example.mytrackerapp.ui.theme.MinTouchTarget
 import com.example.mytrackerapp.ui.theme.MyTrackerAppTheme
@@ -536,6 +547,223 @@ fun StickyCtaBar(modifier: Modifier = Modifier, content: @Composable ColumnScope
     )
 }
 
+/* -------------------------------------------------------------- rows & rules */
+
+/** A toggle row: title, subtitle, switch. The whole row is the touch target. */
+@Composable
+fun SettingRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = MinTouchTarget)
+            .clip(RoundedCornerShape(Radius.md))
+            .toggleable(
+                value = checked,
+                role = Role.Switch,
+                onValueChange = onCheckedChange
+            )
+            .padding(vertical = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Column(Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+            Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = null,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = OnAccent,
+                checkedTrackColor = Accent,
+                checkedBorderColor = Accent,
+                uncheckedThumbColor = TextTertiary,
+                uncheckedTrackColor = SurfaceHigh,
+                uncheckedBorderColor = OutlineStrong
+            )
+        )
+    }
+}
+
+/** A tappable card row: title, subtitle, optional tint (e.g. [Danger] for a destructive action). */
+@Composable
+fun ActionRow(
+    title: String,
+    subtitle: String,
+    tint: Color = TextPrimary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .heightIn(min = MinTouchTarget)
+            .clip(RoundedCornerShape(Radius.md))
+            .background(SurfaceColor)
+            .border(1.dp, Outline, RoundedCornerShape(Radius.md))
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(Spacing.md)
+    ) {
+        Text(title, style = MaterialTheme.typography.titleMedium, color = tint)
+        Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+    }
+}
+
+/**
+ * Minus / value / plus stepper for an integer in [range]. Each arrow is its own
+ * >= [MinTouchTarget] button so it works as a target on a phone, not just a mouse.
+ */
+@Composable
+fun NumberStepper(
+    label: String,
+    value: Int,
+    range: IntRange,
+    onChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+    suffix: String = ""
+) {
+    Row(
+        modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        Text(label, style = MaterialTheme.typography.titleMedium, color = TextPrimary, modifier = Modifier.weight(1f))
+        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+            StepperArrow(
+                icon = null,
+                glyph = "–",
+                enabled = value > range.first,
+                description = "Decrease $label",
+                onClick = { onChange((value - 1).coerceIn(range)) }
+            )
+            Text(
+                "$value$suffix",
+                style = MaterialTheme.typography.titleMedium,
+                color = TextPrimary,
+                modifier = Modifier.width(48.dp),
+                textAlign = androidx.compose.ui.text.style.TextAlign.Center
+            )
+            StepperArrow(
+                icon = null,
+                glyph = "+",
+                enabled = value < range.last,
+                description = "Increase $label",
+                onClick = { onChange((value + 1).coerceIn(range)) }
+            )
+        }
+    }
+}
+
+@Composable
+private fun StepperArrow(
+    icon: Int?,
+    glyph: String,
+    enabled: Boolean,
+    description: String,
+    onClick: () -> Unit
+) {
+    Box(
+        Modifier
+            .size(MinTouchTarget)
+            .clip(RoundedCornerShape(Radius.pill))
+            .background(SurfaceHigh)
+            .border(1.dp, Outline, RoundedCornerShape(Radius.pill))
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .semantics { contentDescription = description },
+        contentAlignment = Alignment.Center
+    ) {
+        if (icon != null) {
+            Icon(painterResource(icon), contentDescription = null, tint = if (enabled) TextPrimary else TextDisabled)
+        } else {
+            Text(
+                glyph,
+                style = MaterialTheme.typography.titleLarge,
+                color = if (enabled) TextPrimary else TextDisabled
+            )
+        }
+    }
+}
+
+/** A themed text field with an optional error line, for the rules/exercise/metric editors. */
+@Composable
+fun LabeledField(
+    label: String,
+    value: String,
+    onValueChange: (String) -> Unit,
+    modifier: Modifier = Modifier,
+    keyboardType: KeyboardType = KeyboardType.Text,
+    singleLine: Boolean = true,
+    error: String? = null
+) {
+    Column(modifier.fillMaxWidth()) {
+        OutlinedTextField(
+            value = value,
+            onValueChange = onValueChange,
+            label = { Text(label) },
+            singleLine = singleLine,
+            isError = error != null,
+            keyboardOptions = KeyboardOptions(keyboardType = keyboardType),
+            colors = OutlinedTextFieldDefaults.colors(
+                focusedTextColor = TextPrimary,
+                unfocusedTextColor = TextPrimary,
+                focusedBorderColor = Accent,
+                unfocusedBorderColor = Outline,
+                focusedLabelColor = Accent,
+                unfocusedLabelColor = TextTertiary,
+                cursorColor = Accent,
+                errorBorderColor = Danger,
+                errorLabelColor = Danger
+            ),
+            modifier = Modifier.fillMaxWidth()
+        )
+        if (error != null) {
+            Text(
+                error,
+                style = MaterialTheme.typography.labelSmall,
+                color = Danger,
+                modifier = Modifier.padding(start = Spacing.sm, top = 2.dp)
+            )
+        }
+    }
+}
+
+/** A themed confirmation dialog. [destructive] renders the confirm label in [Danger]. */
+@Composable
+fun ConfirmDialog(
+    title: String,
+    body: String,
+    confirmLabel: String,
+    onConfirm: () -> Unit,
+    onDismiss: () -> Unit,
+    destructive: Boolean = true,
+    dismissLabel: String = "CANCEL"
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = SurfaceColor,
+        titleContentColor = TextPrimary,
+        textContentColor = TextSecondary,
+        title = { Text(title) },
+        text = { Text(body) },
+        confirmButton = {
+            TextButton(onClick = onConfirm) {
+                Text(confirmLabel, color = if (destructive) Danger else Accent)
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text(dismissLabel, color = TextSecondary)
+            }
+        }
+    )
+}
+
 /* ------------------------------------------------------------------ previews */
 
 @Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 360)
@@ -595,6 +823,13 @@ private fun ComponentGalleryPreview() {
                 Text("Pause icon", style = MaterialTheme.typography.bodyMedium, color = TextSecondary)
             }
             StickyCtaBar { PrimaryButton("Sticky CTA", {}) }
+
+            SectionHeader("Rows & rules")
+            SettingRow("Lock future days", "Future days stay a read-only preview", true, {})
+            ActionRow("Restore default rules", "Back to 4 weeks / 6 days / 13 exercises", Danger, {})
+            NumberStepper("Weeks", 4, 1..26, {})
+            LabeledField("Name", "Bulgarian Split Squat", {})
+            LabeledField("Name", "", {}, error = "Name can't be empty.")
         }
     }
 }
