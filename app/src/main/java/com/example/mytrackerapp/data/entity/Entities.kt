@@ -186,3 +186,34 @@ data class CycleRulesEntity(
     val programExerciseIdsCsv: String,
     val snapshotAt: Long
 )
+
+/** The metric catalog is itself an editable rule: enable, disable, rename, add your own. */
+@Entity(tableName = "metrics")
+data class MetricEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    /** WEIGHT (kg) | LENGTH (cm) | PERCENT | COUNT */
+    val kind: String,
+    val hint: String,
+    val enabled: Boolean,
+    val isCustom: Boolean,
+    val decimals: Int,
+    val sortOrder: Int,
+    val archivedAt: Long? = null
+)
+
+@Entity(
+    tableName = "measurements",
+    indices = [
+        Index(value = ["metricId", "takenAt"], unique = true),
+        Index(value = ["takenAt"])
+    ]
+)
+data class MeasurementEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val metricId: String,
+    /** Canonical: kilograms for WEIGHT, centimetres for LENGTH, percent for PERCENT. */
+    val value: Double,
+    val takenAt: Long,
+    val note: String = ""
+)

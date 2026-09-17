@@ -9,6 +9,8 @@ import com.example.mytrackerapp.data.entity.CycleEntity
 import com.example.mytrackerapp.data.entity.CycleRulesEntity
 import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
+import com.example.mytrackerapp.data.entity.MeasurementEntity
+import com.example.mytrackerapp.data.entity.MetricEntity
 import com.example.mytrackerapp.data.entity.ProgramRulesEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -324,4 +326,51 @@ interface RulesDao {
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsertCycleRules(rules: CycleRulesEntity)
+}
+
+@Dao
+interface MetricDao {
+
+    @Query("SELECT * FROM metrics WHERE archivedAt IS NULL ORDER BY sortOrder")
+    fun observeAll(): Flow<List<MetricEntity>>
+
+    @Query("SELECT * FROM metrics WHERE archivedAt IS NULL AND enabled = 1 ORDER BY sortOrder")
+    fun observeEnabled(): Flow<List<MetricEntity>>
+
+    @Query("SELECT * FROM metrics WHERE id = :id")
+    suspend fun getById(id: String): MetricEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<MetricEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(metric: MetricEntity)
+
+    @Query("UPDATE metrics SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
+    @Query("UPDATE metrics SET archivedAt = :ts WHERE id = :id")
+    suspend fun archive(id: String, ts: Long)
+}
+
+@Dao
+interface MeasurementDao {
+
+    @Query("SELECT * FROM measurements WHERE metricId = :metricId ORDER BY takenAt ASC")
+    fun observeHistory(metricId: String): Flow<List<MeasurementEntity>>
+
+    @Query("SELECT * FROM measurements WHERE metricId = :metricId ORDER BY takenAt DESC LIMIT 1")
+    fun observeLatest(metricId: String): Flow<MeasurementEntity?>
+
+    @Query("SELECT * FROM measurements WHERE metricId = :metricId ORDER BY takenAt ASC")
+    suspend fun getHistory(metricId: String): List<MeasurementEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(measurement: MeasurementEntity): Long
+
+    @Query("UPDATE measurements SET value = :value, note = :note WHERE id = :id")
+    suspend fun update(id: Long, value: Double, note: String)
+
+    @Query("DELETE FROM measurements WHERE id = :id")
+    suspend fun delete(id: Long)
 }

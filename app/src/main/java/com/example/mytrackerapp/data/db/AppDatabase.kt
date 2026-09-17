@@ -10,6 +10,8 @@ import com.example.mytrackerapp.data.entity.CycleEntity
 import com.example.mytrackerapp.data.entity.CycleRulesEntity
 import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
+import com.example.mytrackerapp.data.entity.MeasurementEntity
+import com.example.mytrackerapp.data.entity.MetricEntity
 import com.example.mytrackerapp.data.entity.ProgramRulesEntity
 import com.example.mytrackerapp.data.seed.SeedData
 import com.example.mytrackerapp.domain.ProgramRules
@@ -21,9 +23,11 @@ import com.example.mytrackerapp.domain.ProgramRules
         DayEntity::class,
         CompletionEntity::class,
         ProgramRulesEntity::class,
-        CycleRulesEntity::class
+        CycleRulesEntity::class,
+        MetricEntity::class,
+        MeasurementEntity::class
     ],
-    version = 4,
+    version = 5,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -33,6 +37,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun dayDao(): DayDao
     abstract fun completionDao(): CompletionDao
     abstract fun rulesDao(): RulesDao
+    abstract fun metricDao(): MetricDao
+    abstract fun measurementDao(): MeasurementDao
 
     companion object {
         const val NAME = "tracker.db"
@@ -46,7 +52,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
                 .addCallback(SeedCallback)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }
@@ -154,5 +160,24 @@ internal object SeedCallback : RoomDatabase.Callback() {
                 now
             )
         )
+
+        // INVARIANT 9: mirrors what MIGRATION_4_5 inserts for an upgrading install.
+        SeedData.DEFAULT_METRICS.forEach { m ->
+            db.execSQL(
+                """INSERT INTO metrics
+                   (id, name, kind, hint, enabled, isCustom, decimals, sortOrder, archivedAt)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL)""",
+                arrayOf<Any>(
+                    m.id,
+                    m.name,
+                    m.kind,
+                    m.hint,
+                    if (m.enabled) 1 else 0,
+                    if (m.isCustom) 1 else 0,
+                    m.decimals,
+                    m.sortOrder
+                )
+            )
+        }
     }
 }

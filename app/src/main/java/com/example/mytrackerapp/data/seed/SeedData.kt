@@ -1,6 +1,7 @@
 package com.example.mytrackerapp.data.seed
 
 import com.example.mytrackerapp.data.entity.ExerciseEntity
+import com.example.mytrackerapp.data.entity.MetricEntity
 
 /**
  * Transcribed verbatim from Saeed_4Week.xlsx.
@@ -429,4 +430,33 @@ object SeedData {
             }
         )
     }
+
+    private const val WEIGHT = "WEIGHT"
+    private const val LENGTH = "LENGTH"
+    private const val PERCENT = "PERCENT"
+    private const val COUNT = "COUNT"
+
+    /**
+     * The default measurement catalog — 17 rows, 7 enabled out of the box. All 17 exist
+     * from day one so turning one on later needs no migration.
+     */
+    val DEFAULT_METRICS: List<MetricEntity> = listOf(
+        MetricEntity("bodyweight", "Body weight", WEIGHT, "Same time of day, before eating", true, false, 1, 1),
+        MetricEntity("body_fat", "Body fat", PERCENT, "From a scale or calipers — consistency matters more than accuracy", true, false, 1, 2),
+        MetricEntity("height", "Height", LENGTH, "Needed for BMI. Measure once", true, false, 0, 3),
+        MetricEntity("neck", "Neck", LENGTH, "Just below the Adam's apple", false, false, 1, 4),
+        MetricEntity("shoulders", "Shoulders", LENGTH, "Widest point, arms relaxed", false, false, 1, 5),
+        MetricEntity("chest", "Chest", LENGTH, "At nipple line, at the end of a normal breath out", true, false, 1, 6),
+        MetricEntity("upper_arm_left", "Upper arm (L)", LENGTH, "Flexed, at the biggest point", false, false, 1, 7),
+        MetricEntity("upper_arm_right", "Upper arm (R)", LENGTH, "Flexed, at the biggest point", true, false, 1, 8),
+        MetricEntity("forearm_left", "Forearm (L)", LENGTH, "Widest point below the elbow", false, false, 1, 9),
+        MetricEntity("forearm_right", "Forearm (R)", LENGTH, "Widest point below the elbow", false, false, 1, 10),
+        MetricEntity("waist", "Waist", LENGTH, "At the navel, don't hold it in", true, false, 1, 11),
+        MetricEntity("hips", "Hips", LENGTH, "Widest point of the glutes", true, false, 1, 12),
+        MetricEntity("thigh_left", "Thigh (L)", LENGTH, "Mid-thigh, standing relaxed", false, false, 1, 13),
+        MetricEntity("thigh_right", "Thigh (R)", LENGTH, "Mid-thigh, standing relaxed", true, false, 1, 14),
+        MetricEntity("calf_left", "Calf (L)", LENGTH, "Widest point, standing", false, false, 1, 15),
+        MetricEntity("calf_right", "Calf (R)", LENGTH, "Widest point, standing", false, false, 1, 16),
+        MetricEntity("resting_hr", "Resting heart rate", COUNT, "First thing in the morning, before getting up", true, false, 0, 17)
+    )
 }

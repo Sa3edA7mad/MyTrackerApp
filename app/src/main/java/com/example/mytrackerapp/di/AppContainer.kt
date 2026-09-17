@@ -4,6 +4,7 @@ import android.content.Context
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.prefs.SettingsStore
 import com.example.mytrackerapp.repo.CatalogRepository
+import com.example.mytrackerapp.repo.MeasurementRepository
 import com.example.mytrackerapp.repo.RulesRepository
 import com.example.mytrackerapp.repo.TrackerRepository
 
@@ -30,6 +31,14 @@ class AppContainer(context: Context) {
     }
 
     val catalog: CatalogRepository by lazy { CatalogRepository(db.exerciseDao()) }
+
+    val measurements: MeasurementRepository by lazy {
+        MeasurementRepository(
+            metrics = db.metricDao(),
+            measurements = db.measurementDao(),
+            unitPrefs = { rules.observeUnits() }
+        )
+    }
 
     val repo: TrackerRepository by lazy {
         TrackerRepository(

@@ -104,3 +104,35 @@ val MIGRATION_3_4 = object : Migration(3, 4) {
         db.execSQL("ALTER TABLE completions ADD COLUMN `note` TEXT DEFAULT NULL")
     }
 }
+
+/**
+ * v4 -> v5: adds `metrics` (the editable measurement catalog) and `measurements`
+ * (canonical kg/cm/percent readings). `CREATE TABLE` statements copied verbatim from
+ * the Room-generated schemas/5.json, same reasoning as MIGRATION_1_2.
+ */
+val MIGRATION_4_5 = object : Migration(4, 5) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `metrics` (`id` TEXT NOT NULL, `name` TEXT NOT NULL, `kind` TEXT NOT NULL, `hint` TEXT NOT NULL, `enabled` INTEGER NOT NULL, `isCustom` INTEGER NOT NULL, `decimals` INTEGER NOT NULL, `sortOrder` INTEGER NOT NULL, `archivedAt` INTEGER, PRIMARY KEY(`id`))"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `measurements` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `metricId` TEXT NOT NULL, `value` REAL NOT NULL, `takenAt` INTEGER NOT NULL, `note` TEXT NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_measurements_metricId_takenAt` ON `measurements` (`metricId`, `takenAt`)"
+        )
+        db.execSQL(
+            "CREATE INDEX IF NOT EXISTS `index_measurements_takenAt` ON `measurements` (`takenAt`)"
+        )
+
+        SeedData.DEFAULT_METRICS.forEach { m ->
+            db.execSQL(
+                """INSERT OR IGNORE INTO metrics
+                   (id, name, kind, hint, enabled, isCustom, decimals, sortOrder)
+                   VALUES ('${m.id}', '${m.name.replace("'", "''")}', '${m.kind}',
+                           '${m.hint.replace("'", "''")}', ${if (m.enabled) 1 else 0},
+                           ${if (m.isCustom) 1 else 0}, ${m.decimals}, ${m.sortOrder})"""
+            )
+        }
+    }
+}
