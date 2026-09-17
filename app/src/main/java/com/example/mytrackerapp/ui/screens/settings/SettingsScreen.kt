@@ -112,6 +112,7 @@ class SettingsViewModel(
 @Composable
 fun SettingsRoute(
     onBack: () -> Unit,
+    onOpenRules: () -> Unit,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
 ) {
     val settings by viewModel.settings.collectAsState()
@@ -136,6 +137,7 @@ fun SettingsRoute(
         settings = settings,
         snackbars = snackbars,
         onBack = onBack,
+        onOpenRules = onOpenRules,
         onGuided = viewModel::setGuidedMode,
         onHaptics = viewModel::setHaptics,
         onSound = viewModel::setSoundCues,
@@ -151,6 +153,7 @@ fun SettingsScreen(
     settings: Settings,
     snackbars: SnackbarHostState,
     onBack: () -> Unit,
+    onOpenRules: () -> Unit,
     onGuided: (Boolean) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onSound: (Boolean) -> Unit,
@@ -187,6 +190,13 @@ fun SettingsScreen(
                 )
             }
             Text("Settings", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+
+            SectionHeader("Program")
+            ActionRow(
+                title = "Program rules",
+                subtitle = "Weeks, days, circuits, warm-up/stretch, counting and locking",
+                onClick = onOpenRules
+            )
 
             SectionHeader("Session")
             SettingRow(
@@ -262,7 +272,7 @@ private fun SettingsPreview() {
         SettingsScreen(
             settings = Settings(),
             snackbars = remember { SnackbarHostState() },
-            onBack = {}, onGuided = {}, onHaptics = {}, onSound = {},
+            onBack = {}, onOpenRules = {}, onGuided = {}, onHaptics = {}, onSound = {},
             onKeepAwake = {}, onAutoAdvance = {}, onExport = {}, onResetCycle = {}
         )
     }

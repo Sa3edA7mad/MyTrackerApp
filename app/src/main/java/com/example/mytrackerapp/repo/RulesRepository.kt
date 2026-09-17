@@ -148,15 +148,20 @@ class RulesRepository(
             emptyList()
         }
 
-    /** What applying the draft to [cycleId] would do. Pure analysis, writes nothing. */
-    suspend fun previewApply(cycleId: Long): ApplyImpact = withContext(Dispatchers.IO) {
-        val from = rulesFor(cycleId)
-        val to = getDraft()
-        val slots = completions.getAllForCycle(cycleId).map { Triple(it.week, it.day, it.circuit) }
-        val closed = days.getForCycle(cycleId).filter { it.closedAt != null }
-            .map { Position(it.week, it.day) }.toSet()
-        RuleImpact.analyse(from, to, slots, closed)
-    }
+    /**
+     * What applying [candidate] (the saved draft, if omitted) to [cycleId] would do.
+     * Pure analysis, writes nothing. Taking an explicit candidate lets the editor screen
+     * show a live impact preview against in-progress edits the user hasn't saved yet.
+     */
+    suspend fun previewApply(cycleId: Long, candidate: ProgramRules? = null): ApplyImpact =
+        withContext(Dispatchers.IO) {
+            val from = rulesFor(cycleId)
+            val to = candidate ?: getDraft()
+            val slots = completions.getAllForCycle(cycleId).map { Triple(it.week, it.day, it.circuit) }
+            val closed = days.getForCycle(cycleId).filter { it.closedAt != null }
+                .map { Position(it.week, it.day) }.toSet()
+            RuleImpact.analyse(from, to, slots, closed)
+        }
 
     /** INVARIANT 7/8: re-snapshots [cycleId] from the current draft. Deletes no completions. */
     suspend fun applyDraftToCycle(cycleId: Long): List<String> = withContext(Dispatchers.IO) {

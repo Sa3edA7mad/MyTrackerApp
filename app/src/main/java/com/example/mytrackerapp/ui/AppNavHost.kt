@@ -19,6 +19,7 @@ import com.example.mytrackerapp.ui.screens.exercise.ExerciseDetailRoute
 import com.example.mytrackerapp.ui.screens.library.LibraryRoute
 import com.example.mytrackerapp.ui.screens.program.ProgramRoute
 import com.example.mytrackerapp.ui.screens.progress.ProgressRoute
+import com.example.mytrackerapp.ui.screens.rules.RulesRoute
 import com.example.mytrackerapp.ui.screens.settings.SettingsRoute
 import com.example.mytrackerapp.ui.screens.routine.RoutineRoute
 import com.example.mytrackerapp.ui.screens.today.TodayRoute
@@ -72,7 +73,13 @@ fun AppRoot() {
                 LibraryRoute(onOpenExercise = { id -> nav.navigate(Routes.exercise(id)) })
             }
             composable(Routes.SETTINGS) {
-                SettingsRoute(onBack = { nav.popBackStack() })
+                SettingsRoute(
+                    onBack = { nav.popBackStack() },
+                    onOpenRules = { nav.navigate(Routes.RULES) }
+                )
+            }
+            composable(Routes.RULES) {
+                RulesRoute(onBack = { nav.popBackStack() })
             }
             composable(Routes.CYCLE_COMPLETE) {
                 CycleCompleteRoute(
