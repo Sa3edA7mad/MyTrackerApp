@@ -45,6 +45,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.mytrackerapp.TrackerApplication
+import com.example.mytrackerapp.domain.PerformanceSummary
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.DayTally
 import com.example.mytrackerapp.domain.model.Exercise
@@ -56,10 +57,12 @@ import com.example.mytrackerapp.ui.components.AppIcons
 import com.example.mytrackerapp.ui.components.CategoryChip
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.components.SectionHeader
+import com.example.mytrackerapp.ui.components.StatTile
 import com.example.mytrackerapp.ui.openVideo
 import com.example.mytrackerapp.ui.theme.Accent
 import com.example.mytrackerapp.ui.theme.AccentMuted
 import com.example.mytrackerapp.ui.theme.Canvas as CanvasColor
+import com.example.mytrackerapp.ui.theme.Danger
 import com.example.mytrackerapp.ui.theme.MinTouchTarget
 import com.example.mytrackerapp.ui.theme.MyTrackerAppTheme
 import com.example.mytrackerapp.ui.theme.Outline
@@ -81,6 +84,10 @@ class ExerciseDetailViewModel(repo: TrackerRepository, id: String) : ViewModel()
     val state: StateFlow<UiState<ExerciseDetail>> = repo.observeExerciseDetail(id)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Loading)
 
+    val performance: StateFlow<PerformanceSummary?> =
+        repo.observePerformance(id)
+            .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
     companion object {
         fun factory(id: String): ViewModelProvider.Factory = viewModelFactory {
             initializer {
@@ -93,12 +100,13 @@ class ExerciseDetailViewModel(repo: TrackerRepository, id: String) : ViewModel()
 }
 
 @Composable
-fun ExerciseDetailRoute(id: String, onBack: () -> Unit) {
+fun ExerciseDetailRoute(id: String, onBack: () -> Unit, onEdit: (String) -> Unit) {
     val viewModel: ExerciseDetailViewModel = viewModel(
         factory = ExerciseDetailViewModel.factory(id),
         key = "exercise/$id"
     )
     val state by viewModel.state.collectAsState()
+    val performance by viewModel.performance.collectAsState()
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -114,12 +122,22 @@ fun ExerciseDetailRoute(id: String, onBack: () -> Unit) {
             )
         }
 
-        is UiState.Ready -> ExerciseDetailScreen(detail = s.data, onBack = onBack)
+        is UiState.Ready -> ExerciseDetailScreen(
+            detail = s.data,
+            performance = performance,
+            onBack = onBack,
+            onEdit = { onEdit(id) }
+        )
     }
 }
 
 @Composable
-fun ExerciseDetailScreen(detail: ExerciseDetail, onBack: () -> Unit) {
+fun ExerciseDetailScreen(
+    detail: ExerciseDetail,
+    performance: PerformanceSummary? = null,
+    onBack: () -> Unit,
+    onEdit: () -> Unit = {}
+) {
     val exercise = detail.exercise
     val context = LocalContext.current
     val snackbars = remember { SnackbarHostState() }
@@ -136,18 +154,43 @@ fun ExerciseDetailScreen(detail: ExerciseDetail, onBack: () -> Unit) {
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = Spacing.lg)
         ) {
-            Box(
-                Modifier
-                    .size(MinTouchTarget)
-                    .clip(CircleShape)
-                    .clickable(role = Role.Button, onClick = onBack),
-                contentAlignment = Alignment.CenterStart
-            ) {
-                Icon(
-                    painterResource(AppIcons.back),
-                    contentDescription = "Back",
-                    tint = TextTertiary,
-                    modifier = Modifier.size(22.dp)
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Box(
+                    Modifier
+                        .size(MinTouchTarget)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onBack),
+                    contentAlignment = Alignment.CenterStart
+                ) {
+                    Icon(
+                        painterResource(AppIcons.back),
+                        contentDescription = "Back",
+                        tint = TextTertiary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+                Box(
+                    Modifier
+                        .size(MinTouchTarget)
+                        .clip(CircleShape)
+                        .clickable(role = Role.Button, onClick = onEdit),
+                    contentAlignment = Alignment.CenterEnd
+                ) {
+                    Icon(
+                        painterResource(AppIcons.edit),
+                        contentDescription = "Edit exercise",
+                        tint = TextTertiary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+
+            if (exercise.isArchived) {
+                Spacer(Modifier.height(Spacing.sm))
+                Text(
+                    "ARCHIVED — kept for history, no longer in the rotation",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = Danger
                 )
             }
 
@@ -237,6 +280,63 @@ fun ExerciseDetailScreen(detail: ExerciseDetail, onBack: () -> Unit) {
             } else {
                 Text(
                     "Not done yet this cycle.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = TextTertiary
+                )
+            }
+
+            if (performance != null && performance.loggedSets > 0) {
+                SectionHeader("Performance")
+                Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+                    StatTile(
+                        performance.bestLoadKg?.let { "%.1f kg".format(it) }
+                            ?: performance.bestReps?.let { "$it" }
+                            ?: performance.bestHoldSeconds?.let { "${it}s" }
+                            ?: "—",
+                        "Best",
+                        Modifier.weight(1f)
+                    )
+                    StatTile(
+                        performance.bestReps?.let { "$it" } ?: "—",
+                        "Best reps",
+                        Modifier.weight(1f)
+                    )
+                    StatTile(
+                        performance.totalVolumeKg?.let { "%.0f kg".format(it) } ?: "—",
+                        "Total volume",
+                        Modifier.weight(1f)
+                    )
+                }
+                if (performance.volumeByDay.isNotEmpty()) {
+                    Spacer(Modifier.height(Spacing.md))
+                    val maxVolume = performance.volumeByDay.maxOf { it.volumeKg }
+                    Row(
+                        Modifier.fillMaxWidth().height(48.dp),
+                        horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
+                        verticalAlignment = Alignment.Bottom
+                    ) {
+                        performance.volumeByDay.forEach { day ->
+                            val fraction = if (maxVolume == 0.0) 0f else (day.volumeKg / maxVolume).toFloat()
+                            Box(
+                                Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight(fraction.coerceAtLeast(0.06f))
+                                    .clip(RoundedCornerShape(3.dp))
+                                    .background(Accent)
+                            )
+                        }
+                    }
+                    Spacer(Modifier.height(Spacing.xs))
+                    Text(
+                        "VOLUME BY TRAINING DAY",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = TextTertiary
+                    )
+                }
+            } else if (detail.hasHistory) {
+                SectionHeader("Performance")
+                Text(
+                    "No sets logged yet. Turn on rep or load logging in the exercise editor.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextTertiary
                 )

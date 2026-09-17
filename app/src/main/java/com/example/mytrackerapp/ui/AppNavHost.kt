@@ -13,6 +13,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import com.example.mytrackerapp.ui.components.BottomBar
+import com.example.mytrackerapp.ui.screens.catalog.CatalogEditRoute
 import com.example.mytrackerapp.ui.screens.circuit.CircuitRoute
 import com.example.mytrackerapp.ui.screens.complete.CycleCompleteRoute
 import com.example.mytrackerapp.ui.screens.exercise.ExerciseDetailRoute
@@ -70,7 +71,10 @@ fun AppRoot() {
             }
             composable(Routes.PROGRESS) { ProgressRoute() }
             composable(Routes.LIBRARY) {
-                LibraryRoute(onOpenExercise = { id -> nav.navigate(Routes.exercise(id)) })
+                LibraryRoute(
+                    onOpenExercise = { id -> nav.navigate(Routes.exercise(id)) },
+                    onAddExercise = { nav.navigate(Routes.exerciseEdit()) }
+                )
             }
             composable(Routes.SETTINGS) {
                 SettingsRoute(
@@ -121,9 +125,21 @@ fun AppRoot() {
                 route = Routes.EXERCISE_PATTERN,
                 arguments = listOf(navArgument(Routes.ARG_ID) { type = NavType.StringType })
             ) { entry ->
+                val id = entry.arguments?.getString(Routes.ARG_ID).orEmpty()
                 ExerciseDetailRoute(
-                    id = entry.arguments?.getString(Routes.ARG_ID).orEmpty(),
-                    onBack = { nav.popBackStack() }
+                    id = id,
+                    onBack = { nav.popBackStack() },
+                    onEdit = { nav.navigate(Routes.exerciseEdit(id)) }
+                )
+            }
+
+            composable(
+                route = Routes.EXERCISE_EDIT_PATTERN,
+                arguments = listOf(navArgument(Routes.ARG_ID) { type = NavType.StringType })
+            ) { entry ->
+                CatalogEditRoute(
+                    id = entry.arguments?.getString(Routes.ARG_ID) ?: Routes.EXERCISE_EDIT_NEW_ID,
+                    onDone = { nav.popBackStack() }
                 )
             }
         }
