@@ -59,24 +59,34 @@ val ALL_POSITIONS: List<Position> =
     (1..WEEKS).flatMap { w -> (1..DAYS_PER_WEEK).map { d -> Position(w, d) } }
 
 /**
- * INVARIANT 3: a day is settled when it is fully complete OR the user closed it early.
+ * INVARIANT 3: a day is settled when it is fully complete AND stretched, OR the user
+ * closed it early.
  *
  * Without the closed-early escape a partly-finished day traps the counter forever and
  * the cycle can never reach its completion screen.
+ *
+ * `stretchDone` is required alongside the exercise count, not just carried for display.
+ * Without it, the day settles the instant the last circuit exercise is ticked, and the
+ * counter jumps to the next day before the stretch routine is ever reachable — orphaning
+ * it, since RoutineScreen always resolves to the *current* day, never a past one. This was
+ * caught live: after finishing all 4 circuits of Week 1 Day 1, Today jumped straight to
+ * Day 2 without ever offering the stretch screen.
  */
-fun isDaySettled(week: Int, doneCount: Int, closed: Boolean): Boolean =
-    closed || doneCount >= exercisesPerDay(week)
+fun isDaySettled(week: Int, doneCount: Int, stretchDone: Boolean, closed: Boolean): Boolean =
+    closed || (doneCount >= exercisesPerDay(week) && stretchDone)
 
 /**
  * First unsettled day in program order, or null when the cycle is finished.
  *
  * @param doneByPosition completion counts for `circuit >= 1` only (INVARIANT 2).
+ * @param stretchDonePositions days whose stretch routine has been completed.
  */
 fun nextPosition(
     doneByPosition: Map<Position, Int>,
+    stretchDonePositions: Set<Position>,
     closedPositions: Set<Position>
 ): Position? = ALL_POSITIONS.firstOrNull { p ->
-    !isDaySettled(p.week, doneByPosition[p] ?: 0, p in closedPositions)
+    !isDaySettled(p.week, doneByPosition[p] ?: 0, p in stretchDonePositions, p in closedPositions)
 }
 
 /** Local calendar date a timestamp belongs to, with the 4am rollover applied. */
@@ -103,12 +113,6 @@ fun recentTallies(
     .map { DayTally(date = it.first, count = it.second) }
 
 /**
- * Consecutive training dates ending today or yesterday.
- *
- * Returns 0 when the most recent training date is older than yesterday, so a broken
- * streak reads 0 rather than showing a stale number from last week.
- */
-/**
  * Longest run of consecutive training dates anywhere in the set.
  *
  * Distinct from [streakDays], which only counts the run that is still alive. The cycle
@@ -126,6 +130,12 @@ fun longestStreak(trainingDates: Set<LocalDate>): Int {
     return best
 }
 
+/**
+ * Consecutive training dates ending today or yesterday.
+ *
+ * Returns 0 when the most recent training date is older than yesterday, so a broken
+ * streak reads 0 rather than showing a stale number from last week.
+ */
 fun streakDays(trainingDates: Set<LocalDate>, today: LocalDate): Int {
     var cursor = when {
         today in trainingDates -> today

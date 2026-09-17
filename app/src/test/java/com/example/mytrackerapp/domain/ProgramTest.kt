@@ -59,39 +59,83 @@ class ProgramTest {
 
     @Test
     fun `empty cycle starts at week 1 day 1`() {
-        assertEquals(Position(1, 1), nextPosition(emptyMap(), emptySet()))
+        assertEquals(Position(1, 1), nextPosition(emptyMap(), emptySet(), emptySet()))
     }
 
     @Test
     fun `a fully complete cycle has no next position`() {
         val done = ALL_POSITIONS.associateWith { exercisesPerDay(it.week) }
-        assertNull(nextPosition(done, emptySet()))
+        assertNull(nextPosition(done, ALL_POSITIONS.toSet(), emptySet()))
     }
 
     @Test
     fun `a partly done day is not settled`() {
         val done = mapOf(Position(1, 1) to 51) // one short of 52
-        assertEquals(Position(1, 1), nextPosition(done, emptySet()))
+        assertEquals(Position(1, 1), nextPosition(done, emptySet(), emptySet()))
     }
 
     @Test
-    fun `closing a day early releases the counter`() {
+    fun `all circuits done but stretch not done does not advance the day`() {
+        // Regression: caught live on device. Finishing all 4 circuits of Week 1 Day 1
+        // jumped straight to Day 2 without the stretch routine ever being reachable,
+        // because settlement originally ignored stretch entirely.
+        val done = mapOf(Position(1, 1) to exercisesPerDay(1))
+        assertEquals(Position(1, 1), nextPosition(done, emptySet(), emptySet()))
+    }
+
+    @Test
+    fun `stretch completion is what releases a fully-exercised day`() {
+        val done = mapOf(Position(1, 1) to exercisesPerDay(1))
+        val stretched = setOf(Position(1, 1))
+        assertEquals(Position(1, 2), nextPosition(done, stretched, emptySet()))
+    }
+
+    @Test
+    fun `stretch done alone with no exercises does not settle the day`() {
+        assertEquals(
+            Position(1, 1),
+            nextPosition(emptyMap(), setOf(Position(1, 1)), emptySet())
+        )
+    }
+
+    @Test
+    fun `closing a day early releases the counter regardless of stretch`() {
         // INVARIANT 3: without this escape, an abandoned day traps the cycle forever.
         val done = mapOf(Position(1, 1) to 10)
         val closed = setOf(Position(1, 1))
-        assertEquals(Position(1, 2), nextPosition(done, closed))
+        assertEquals(Position(1, 2), nextPosition(done, emptySet(), closed))
     }
 
     @Test
     fun `a cycle finished entirely by closing days still completes`() {
-        assertNull(nextPosition(emptyMap(), ALL_POSITIONS.toSet()))
+        assertNull(nextPosition(emptyMap(), emptySet(), ALL_POSITIONS.toSet()))
     }
 
     @Test
     fun `settlement respects the per-week day size`() {
         // 52 finishes a week-1 day but not a week-4 day, which needs 91.
-        assertEquals(true, isDaySettled(week = 1, doneCount = 52, closed = false))
-        assertEquals(false, isDaySettled(week = 4, doneCount = 52, closed = false))
+        assertEquals(true, isDaySettled(week = 1, doneCount = 52, stretchDone = true, closed = false))
+        assertEquals(false, isDaySettled(week = 4, doneCount = 52, stretchDone = true, closed = false))
+    }
+
+    @Test
+    fun `settlement requires stretch even when the exercise count is satisfied`() {
+        assertEquals(
+            false,
+            isDaySettled(week = 1, doneCount = 52, stretchDone = false, closed = false)
+        )
+        assertEquals(
+            true,
+            isDaySettled(week = 1, doneCount = 52, stretchDone = true, closed = false)
+        )
+    }
+
+    @Test
+    fun `closed overrides both the exercise count and the stretch flag`() {
+        assertEquals(
+            true,
+            isDaySettled(week = 1, doneCount = 0, stretchDone = false, closed = true)
+        )
     }
 
     // --- training date and the 4am rollover ---

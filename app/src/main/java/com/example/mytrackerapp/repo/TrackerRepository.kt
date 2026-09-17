@@ -54,6 +54,13 @@ import org.json.JSONObject
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
+/**
+ * Days whose stretch routine is complete, for [nextPosition]'s stretch-gate check
+ * (INVARIANT 3). Pulled out once so every call site derives it the same way.
+ */
+private fun List<DayEntity>.stretchDonePositions(): Set<Position> =
+    filter { it.stretchDoneAt != null }.map { Position(it.week, it.day) }.toSet()
+
 fun ExerciseEntity.toDomain(): Exercise = Exercise(
     id = id,
     name = name,
@@ -109,7 +116,7 @@ class TrackerRepository(
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
 
-            val position = nextPosition(doneByPosition, closed)
+            val position = nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
                 ?: return@combine UiState.Ready(TodayView.CycleComplete)
 
             val row = dayRows.firstOrNull { it.week == position.week && it.day == position.day }
@@ -159,7 +166,7 @@ class TrackerRepository(
                 val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-                val current = nextPosition(doneByPosition, closed)
+                val current = nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
                 val editable = current == null || !isAfter(Position(week, day), current)
 
                 UiState.Ready(
@@ -193,17 +200,21 @@ class TrackerRepository(
         ) { dayCounts, dayRows ->
             nextPosition(
                 dayCounts.associate { Position(it.week, it.day) to it.done },
+                dayRows.stretchDonePositions(),
                 dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
             )
         }
     }.distinctUntilChanged()
 
-    private suspend fun currentPosition(cycleId: Long): Position? = nextPosition(
-        completions.getDayCounts(cycleId).associate { Position(it.week, it.day) to it.done },
-        days.getForCycle(cycleId).filter { it.closedAt != null }
-            .map { Position(it.week, it.day) }.toSet()
-    )
+    private suspend fun currentPosition(cycleId: Long): Position? {
+        val dayRows = days.getForCycle(cycleId)
+        return nextPosition(
+            completions.getDayCounts(cycleId).associate { Position(it.week, it.day) to it.done },
+            dayRows.stretchDonePositions(),
+            dayRows.filter { it.closedAt != null }.map { Position(it.week, it.day) }.toSet()
+        )
+    }
 
     /**
      * Warm-up and stretch always belong to whatever day you are on, so unlike a circuit
@@ -252,7 +263,7 @@ class TrackerRepository(
             val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
-            val current = nextPosition(doneByPosition, closed)
+            val current = nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
             val byDay = circuitCounts.groupBy { Position(it.week, it.day) }
 
             UiState.Ready(
@@ -300,7 +311,7 @@ class TrackerRepository(
                 val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-                val current = nextPosition(doneByPosition, closed)
+                val current = nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
                 val nameById = catalog.associate { it.id to it.name }
 
                 val heat = ALL_POSITIONS.map { p ->

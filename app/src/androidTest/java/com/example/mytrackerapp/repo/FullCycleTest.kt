@@ -124,6 +124,10 @@ class FullCycleTest {
                 for (circuit in 1..circuitsForWeek(week)) {
                     programIds.forEach { repo.setExerciseDone(week, day, circuit, it, true) }
                 }
+                // Stretch is required for a day to settle (INVARIANT 3) — without this the
+                // cycle never finishes and every "current week" assertion below is wrong.
+                stretchIds.forEach { repo.setRoutineExerciseDone(CIRCUIT_STRETCH, it, true) }
+                repo.markRoutineDone(CIRCUIT_STRETCH)
             }
         }
 
@@ -153,9 +157,10 @@ class FullCycleTest {
 
     @Test
     fun everyDayNeedsExactlyItsOwnNumberOfExercises() = runTest {
-        // One short of a full day must NOT advance the counter; the last one must.
-        // Only the boundary is asserted — collecting a flow after all 286 writes would
-        // turn this into a multi-minute test for no extra coverage.
+        // One short of a full day must NOT advance the counter; the last one must — but
+        // only once stretch is ALSO done (INVARIANT 3). Only the boundary is asserted —
+        // collecting a flow after all 286 writes would turn this into a multi-minute test
+        // for no extra coverage.
         for (week in 1..WEEKS) {
             val size = exercisesPerDay(week)
             var done = 0
@@ -173,7 +178,24 @@ class FullCycleTest {
                 }
             }
             assertEquals(size, done)
-            assertEquals("W$week D1 did not settle at $size", Position(week, 2), activePosition())
+
+            // Every exercise is done but stretch is not — the day must NOT settle yet.
+            // This is exactly the bug found live: without this gate the day advances the
+            // instant the last circuit exercise is ticked, and stretch becomes unreachable.
+            assertEquals(
+                "W$week D1 settled without stretch",
+                Position(week, 1),
+                activePosition()
+            )
+
+            stretchIds.forEach { repo.setRoutineExerciseDone(CIRCUIT_STRETCH, it, true) }
+            repo.markRoutineDone(CIRCUIT_STRETCH)
+
+            assertEquals(
+                "W$week D1 did not settle once stretch was done",
+                Position(week, 2),
+                activePosition()
+            )
             // Close the rest of this week so the loop can move to the next one.
             (2..DAYS_PER_WEEK).forEach { repo.closeDayEarly(week, it) }
         }

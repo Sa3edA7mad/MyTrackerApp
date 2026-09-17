@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.SeedCallback
+import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
 import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
 import com.example.mytrackerapp.domain.circuitsForWeek
 import com.example.mytrackerapp.domain.model.CycleStats
@@ -62,8 +63,15 @@ class ProgramStatsRepositoryTest {
         main.forEach { repo.setExerciseDone(week, day, circuit, it.id, true) }
     }
 
+    /**
+     * Finishes every circuit AND the stretch routine, so the day actually settles
+     * (INVARIANT 3) — completing circuits alone leaves the day permanently open.
+     */
     private suspend fun completeDay(week: Int, day: Int) {
         (1..circuitsForWeek(week)).forEach { completeCircuit(week, day, it) }
+        val stretches = db.exerciseDao().getByCategory("STRETCH")
+        stretches.forEach { repo.setRoutineExerciseDone(CIRCUIT_STRETCH, it.id, true) }
+        repo.markRoutineDone(CIRCUIT_STRETCH)
     }
 
     @Test

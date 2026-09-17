@@ -67,6 +67,29 @@ private const val STAGE_FIRST = 0
 private const val STAGE_SWITCH = 1
 private const val STAGE_SECOND = 2
 
+/**
+ * Index to land on after leaving [from], skipping anything already ticked. Null when
+ * there is nothing left to do.
+ *
+ * The pager only resolves "first undone" when it mounts; advancing used to be a plain
+ * `index + 1`. Tick some exercises in checklist mode, switch back to guided, and the pager
+ * would walk you back through work you had already done — resetting a per-side exercise to
+ * SIDE 1 and making you tap through the whole switch-sides dance again. Writes stayed
+ * correct (insert is idempotent), but the flow asked for work that was already finished.
+ *
+ * Only looks forward, so the done-state of [from] itself is irrelevant — which matters
+ * because the caller writes the completion asynchronously right before calling this.
+ */
+internal fun nextUndoneIndex(
+    exercises: List<Exercise>,
+    doneIds: Set<String>,
+    from: Int
+): Int? {
+    var next = from + 1
+    while (next < exercises.size && exercises[next].id in doneIds) next++
+    return if (next >= exercises.size) null else next
+}
+
 @Composable
 fun GuidedPager(
     view: CircuitView,
@@ -101,8 +124,9 @@ fun GuidedPager(
     if (timed) TimerCues(timer, settings.soundCues, settings.haptics)
 
     fun goNext() {
-        if (index + 1 >= view.exercises.size) onFinished() else {
-            index += 1
+        val next = nextUndoneIndex(view.exercises, view.doneIds, index)
+        if (next == null) onFinished() else {
+            index = next
             stage = STAGE_FIRST
         }
     }
@@ -233,6 +257,13 @@ fun GuidedPager(
     }
 }
 
+/**
+ * On side 1 of a per-side exercise the primary button only moves to the switch step — it
+ * does not complete anything, so it should not say it does.
+ */
+private fun doneLabel(exercise: Exercise, stage: Int): String =
+    if (exercise.perSide && stage == STAGE_FIRST) "Done · side 1" else "✓  Done"
+
 @Composable
 private fun PrimaryActions(
     exercise: Exercise,
@@ -247,10 +278,10 @@ private fun PrimaryActions(
             PrimaryButton("Continue · side 2", onAdvance, enabled = enabled)
 
         !timed ->
-            PrimaryButton("✓  Done", onAdvance, enabled = enabled)
+            PrimaryButton(doneLabel(exercise, stage), onAdvance, enabled = enabled)
 
         timer.finished && timer.started ->
-            PrimaryButton("✓  Done", onAdvance, enabled = enabled)
+            PrimaryButton(doneLabel(exercise, stage), onAdvance, enabled = enabled)
 
         timer.running -> Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
             GhostButton("❚❚ Pause", { timer.pause() }, Modifier.weight(1f))
