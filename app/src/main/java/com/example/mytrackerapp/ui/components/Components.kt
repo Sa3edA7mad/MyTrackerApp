@@ -44,7 +44,6 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.ui.theme.Accent
 import com.example.mytrackerapp.ui.theme.AccentMuted
@@ -333,6 +332,7 @@ enum class CircuitCardState { DONE, ACTIVE, UPCOMING, LOCKED }
 fun CircuitCard(
     index: Int,
     done: Int,
+    total: Int,
     state: CircuitCardState,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
@@ -386,7 +386,7 @@ fun CircuitCard(
             modifier = Modifier.weight(1f)
         )
         Text(
-            text = "$done/$EXERCISES_PER_CIRCUIT",
+            text = "$done/$total",
             style = MaterialTheme.typography.labelMedium,
             color = TextTertiary
         )
@@ -566,10 +566,10 @@ private fun ComponentGalleryPreview() {
             ExerciseRow("Dead Hang", "15 sec", done = false, onToggle = {})
             ExerciseRow("External Rotation", "10 ea.", done = false, onToggle = {}, enabled = false)
             SectionHeader("Circuits")
-            CircuitCard(1, 13, CircuitCardState.DONE, {})
-            CircuitCard(4, 0, CircuitCardState.ACTIVE, {})
-            CircuitCard(5, 0, CircuitCardState.UPCOMING, {})
-            CircuitCard(6, 0, CircuitCardState.LOCKED, {})
+            CircuitCard(1, 13, 13, CircuitCardState.DONE, {})
+            CircuitCard(4, 0, 13, CircuitCardState.ACTIVE, {})
+            CircuitCard(5, 0, 13, CircuitCardState.UPCOMING, {})
+            CircuitCard(6, 0, 13, CircuitCardState.LOCKED, {})
             SectionHeader("Ring, stats, week strip")
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.md),

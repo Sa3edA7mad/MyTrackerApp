@@ -39,8 +39,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.mytrackerapp.TrackerApplication
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
 import com.example.mytrackerapp.domain.Position
+import com.example.mytrackerapp.domain.ProgramRules
 import com.example.mytrackerapp.domain.model.CircuitProgress
 import com.example.mytrackerapp.domain.model.DaySummary
 import com.example.mytrackerapp.domain.model.UiState
@@ -219,6 +219,7 @@ private fun WeekCard(
                 CircuitCard(
                     index = circuit.index,
                     done = circuit.done,
+                    total = circuit.total,
                     state = when {
                         circuit.isComplete -> CircuitCardState.DONE
                         isFuture -> CircuitCardState.LOCKED
@@ -285,30 +286,45 @@ private fun DaySquare(
     }
 }
 
-/** Mirrors the repository's INVARIANT 4 rule so the UI can label previews. */
+/**
+ * Mirrors the repository's INVARIANT 4 rule so the UI can label previews.
+ *
+ * Uses [ProgramRules.DEFAULT] rather than the live rules — this screen doesn't yet receive
+ * the active rule set. T11 wires `lockFutureDays` through properly; until then this matches
+ * today's fixed behaviour exactly.
+ */
 private fun isAfter(candidate: Position, current: Position): Boolean =
-    com.example.mytrackerapp.domain.ALL_POSITIONS.indexOf(candidate) >
-        com.example.mytrackerapp.domain.ALL_POSITIONS.indexOf(current)
+    ProgramRules.DEFAULT.isAfter(candidate, current)
 
 /* ------------------------------------------------------------------ previews */
 
 @Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
 @Composable
 private fun ProgramPreview() {
+    val rules = ProgramRules.DEFAULT
     fun day(w: Int, d: Int, done: Int) = DaySummary(
         week = w, day = d, done = done,
-        total = (w + 3) * EXERCISES_PER_CIRCUIT, closed = false,
-        circuits = (1..(w + 3)).map {
-            CircuitProgress(it, if (done >= it * EXERCISES_PER_CIRCUIT) 13 else 0)
+        total = rules.circuitsForWeek(w) * rules.exercisesPerCircuit, closed = false,
+        circuits = (1..rules.circuitsForWeek(w)).map {
+            CircuitProgress(
+                index = it,
+                done = if (done >= it * rules.exercisesPerCircuit) rules.exercisesPerCircuit else 0,
+                total = rules.exercisesPerCircuit
+            )
         }
     )
     MyTrackerAppTheme {
         ProgramScreen(
             weeks = listOf(
-                WeekState(1, 4, (1..6).map { day(1, it, 52) }, isCurrent = false),
-                WeekState(2, 5, (1..6).map { day(2, it, if (it < 3) 65 else if (it == 3) 26 else 0) }, isCurrent = true),
-                WeekState(3, 6, (1..6).map { day(3, it, 0) }, isCurrent = false),
-                WeekState(4, 7, (1..6).map { day(4, it, 0) }, isCurrent = false)
+                WeekState(1, 4, (1..6).map { day(1, it, 52) }, isCurrent = false, exercisesPerCircuit = 13),
+                WeekState(
+                    2, 5,
+                    (1..6).map { day(2, it, if (it < 3) 65 else if (it == 3) 26 else 0) },
+                    isCurrent = true,
+                    exercisesPerCircuit = 13
+                ),
+                WeekState(3, 6, (1..6).map { day(3, it, 0) }, isCurrent = false, exercisesPerCircuit = 13),
+                WeekState(4, 7, (1..6).map { day(4, it, 0) }, isCurrent = false, exercisesPerCircuit = 13)
             ),
             current = Position(2, 3),
             onOpenCircuit = { _, _, _ -> }

@@ -6,8 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.SeedCallback
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
-import com.example.mytrackerapp.domain.circuitsForWeek
+import com.example.mytrackerapp.domain.ProgramRules
 import com.example.mytrackerapp.domain.model.CycleStats
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.domain.model.WeekState
@@ -24,6 +23,8 @@ import java.time.LocalDate
 
 @RunWith(AndroidJUnit4::class)
 class ProgramStatsRepositoryTest {
+
+    private val rules = ProgramRules.DEFAULT
 
     private lateinit var db: AppDatabase
     private lateinit var repo: TrackerRepository
@@ -58,12 +59,12 @@ class ProgramStatsRepositoryTest {
     private suspend fun completeCircuit(week: Int, day: Int, circuit: Int) {
         val main = db.exerciseDao().getByCategory("BODYWEIGHT") +
                 db.exerciseDao().getByCategory("BAND")
-        assertEquals(EXERCISES_PER_CIRCUIT, main.size)
+        assertEquals(rules.exercisesPerCircuit, main.size)
         main.forEach { repo.setExerciseDone(week, day, circuit, it.id, true) }
     }
 
     private suspend fun completeDay(week: Int, day: Int) {
-        (1..circuitsForWeek(week)).forEach { completeCircuit(week, day, it) }
+        (1..rules.circuitsForWeek(week)).forEach { completeCircuit(week, day, it) }
     }
 
     @Test

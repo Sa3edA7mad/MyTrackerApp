@@ -1,7 +1,5 @@
 package com.example.mytrackerapp.domain.model
 
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
-
 enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH }
 
 enum class TargetType { REPS, SECONDS }
@@ -20,9 +18,9 @@ data class Exercise(
     val sortOrder: Int
 )
 
-/** How far through one circuit of 13 the user is. */
-data class CircuitProgress(val index: Int, val done: Int) {
-    val isComplete: Boolean get() = done >= EXERCISES_PER_CIRCUIT
+/** How far through one circuit the user is. [total] is the circuit's own exercise count. */
+data class CircuitProgress(val index: Int, val done: Int, val total: Int) {
+    val isComplete: Boolean get() = done >= total
     val isStarted: Boolean get() = done > 0
 }
 
@@ -36,12 +34,13 @@ data class DayState(
     val circuits: List<CircuitProgress>,
     val warmUpDone: Boolean,
     val stretchDone: Boolean,
-    val closed: Boolean
+    val closed: Boolean,
+    val exercisesPerCircuit: Int
 ) {
     val circuitsTotal: Int get() = circuits.size
     val circuitsDone: Int get() = circuits.count { it.isComplete }
     val exercisesDone: Int get() = circuits.sumOf { it.done }
-    val exercisesTotal: Int get() = circuits.size * EXERCISES_PER_CIRCUIT
+    val exercisesTotal: Int get() = circuits.sumOf { it.total }
     val exercisesLeft: Int get() = (exercisesTotal - exercisesDone).coerceAtLeast(0)
 
     /** First incomplete circuit, or null when every circuit of the day is done. */
@@ -92,10 +91,14 @@ data class WeekState(
     val week: Int,
     val circuitsPerDay: Int,
     val days: List<DaySummary>,
-    val isCurrent: Boolean
+    val isCurrent: Boolean,
+    val exercisesPerCircuit: Int
 ) {
     val circuitsTotal: Int get() = circuitsPerDay * days.size
-    val circuitsDone: Int get() = days.sumOf { it.done / EXERCISES_PER_CIRCUIT }
+
+    /** Counts complete circuits directly rather than dividing, so this stays correct even
+     *  when circuits carry different sizes. Requires [DaySummary.circuits] to be populated. */
+    val circuitsDone: Int get() = days.sumOf { day -> day.circuits.count { it.isComplete } }
     val exercisesDone: Int get() = days.sumOf { it.done }
     val exercisesTotal: Int get() = days.sumOf { it.total }
 }

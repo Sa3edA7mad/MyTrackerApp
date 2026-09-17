@@ -8,15 +8,10 @@ import com.example.mytrackerapp.data.entity.CompletionEntity
 import com.example.mytrackerapp.data.entity.CycleEntity
 import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
-import com.example.mytrackerapp.domain.ALL_POSITIONS
 import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
 import com.example.mytrackerapp.domain.CIRCUIT_WARMUP
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
-import com.example.mytrackerapp.domain.DAYS_PER_WEEK
 import com.example.mytrackerapp.domain.Position
-import com.example.mytrackerapp.domain.WEEKS
-import com.example.mytrackerapp.domain.circuitsForWeek
-import com.example.mytrackerapp.domain.exercisesPerDay
+import com.example.mytrackerapp.domain.ProgramRules
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.CircuitProgress
 import com.example.mytrackerapp.domain.model.CircuitView
@@ -32,11 +27,8 @@ import com.example.mytrackerapp.domain.model.TodayView
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.domain.model.WeekState
 import com.example.mytrackerapp.domain.longestStreak
-import com.example.mytrackerapp.domain.nextPosition
 import com.example.mytrackerapp.domain.recentTallies
 import com.example.mytrackerapp.domain.streakDays
-import com.example.mytrackerapp.domain.totalCircuitsInCycle
-import com.example.mytrackerapp.domain.totalExercisesInCycle
 import com.example.mytrackerapp.domain.trainingDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -80,6 +72,15 @@ class TrackerRepository(
 ) {
 
     /**
+     * The rules a read is evaluated against.
+     *
+     * Deliberate placeholder: from T08 onward this reads the active cycle's frozen
+     * `cycle_rules` snapshot (INVARIANT 7) instead of the shipped default. Kept as a
+     * same-named property so that swap is a one-line change.
+     */
+    private val rules: ProgramRules get() = ProgramRules.DEFAULT
+
+    /**
      * INVARIANT 1: there is always exactly one active cycle.
      *
      * The database callback opens the first one, but this is called defensively at the
@@ -109,7 +110,7 @@ class TrackerRepository(
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
 
-            val position = nextPosition(doneByPosition, closed)
+            val position = rules.nextPosition(doneByPosition, closed)
                 ?: return@combine UiState.Ready(TodayView.CycleComplete)
 
             val row = dayRows.firstOrNull { it.week == position.week && it.day == position.day }
@@ -120,12 +121,17 @@ class TrackerRepository(
             val state = DayState(
                 week = position.week,
                 day = position.day,
-                circuits = (1..circuitsForWeek(position.week)).map { index ->
-                    CircuitProgress(index = index, done = counts[index] ?: 0)
+                circuits = (1..rules.circuitsForWeek(position.week)).map { index ->
+                    CircuitProgress(
+                        index = index,
+                        done = counts[index] ?: 0,
+                        total = rules.exercisesPerCircuit
+                    )
                 },
                 warmUpDone = row?.warmUpDoneAt != null,
                 stretchDone = row?.stretchDoneAt != null,
-                closed = row?.closedAt != null
+                closed = row?.closedAt != null,
+                exercisesPerCircuit = rules.exercisesPerCircuit
             )
             UiState.Ready(TodayView.Active(state))
         }
@@ -159,8 +165,10 @@ class TrackerRepository(
                 val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-                val current = nextPosition(doneByPosition, closed)
-                val editable = current == null || !isAfter(Position(week, day), current)
+                val current = rules.nextPosition(doneByPosition, closed)
+                val editable = !rules.lockFutureDays ||
+                    current == null ||
+                    !rules.isAfter(Position(week, day), current)
 
                 UiState.Ready(
                     CircuitView(
@@ -175,9 +183,6 @@ class TrackerRepository(
             }
         }
 
-    private fun isAfter(candidate: Position, current: Position): Boolean =
-        ALL_POSITIONS.indexOf(candidate) > ALL_POSITIONS.indexOf(current)
-
     /* --------------------------------------------------------------- routines */
 
     /**
@@ -191,7 +196,7 @@ class TrackerRepository(
             completions.observeDayCounts(cycle.id),
             days.observeForCycle(cycle.id)
         ) { dayCounts, dayRows ->
-            nextPosition(
+            rules.nextPosition(
                 dayCounts.associate { Position(it.week, it.day) to it.done },
                 dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
@@ -199,7 +204,7 @@ class TrackerRepository(
         }
     }.distinctUntilChanged()
 
-    private suspend fun currentPosition(cycleId: Long): Position? = nextPosition(
+    private suspend fun currentPosition(cycleId: Long): Position? = rules.nextPosition(
         completions.getDayCounts(cycleId).associate { Position(it.week, it.day) to it.done },
         days.getForCycle(cycleId).filter { it.closedAt != null }
             .map { Position(it.week, it.day) }.toSet()
@@ -252,29 +257,34 @@ class TrackerRepository(
             val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
-            val current = nextPosition(doneByPosition, closed)
+            val current = rules.nextPosition(doneByPosition, closed)
             val byDay = circuitCounts.groupBy { Position(it.week, it.day) }
 
             UiState.Ready(
-                (1..WEEKS).map { week ->
+                (1..rules.weeks).map { week ->
                     WeekState(
                         week = week,
-                        circuitsPerDay = circuitsForWeek(week),
-                        days = (1..DAYS_PER_WEEK).map { day ->
+                        circuitsPerDay = rules.circuitsForWeek(week),
+                        days = (1..rules.daysPerWeek).map { day ->
                             val p = Position(week, day)
                             val counts = byDay[p].orEmpty().associate { it.circuit to it.done }
                             DaySummary(
                                 week = week,
                                 day = day,
                                 done = doneByPosition[p] ?: 0,
-                                total = exercisesPerDay(week),
+                                total = rules.exercisesPerDay(week),
                                 closed = p in closed,
-                                circuits = (1..circuitsForWeek(week)).map { index ->
-                                    CircuitProgress(index = index, done = counts[index] ?: 0)
+                                circuits = (1..rules.circuitsForWeek(week)).map { index ->
+                                    CircuitProgress(
+                                        index = index,
+                                        done = counts[index] ?: 0,
+                                        total = rules.exercisesPerCircuit
+                                    )
                                 }
                             )
                         },
-                        isCurrent = current?.week == week
+                        isCurrent = current?.week == week,
+                        exercisesPerCircuit = rules.exercisesPerCircuit
                     )
                 }
             )
@@ -289,46 +299,60 @@ class TrackerRepository(
     fun observeCycleStats(today: () -> LocalDate = { LocalDate.now() }): Flow<UiState<CycleStats>> =
         activeCycle.flatMapLatest { cycle ->
             combine(
-                completions.observeDayCounts(cycle.id),
+                completions.observeCircuitCounts(cycle.id),
                 completions.observeCompletionTimes(cycle.id),
                 completions.observeTallies(cycle.id),
                 days.observeForCycle(cycle.id),
                 exercises.observeAll()
-            ) { dayCounts, times, tallies, dayRows, catalog ->
+            ) { circuitCounts, times, tallies, dayRows, catalog ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
 
-                val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
+                // Day totals derived from the same per-circuit counts used for the heat map,
+                // rather than a second query, so the two can never disagree.
+                val doneByPosition = circuitCounts
+                    .groupBy { Position(it.week, it.day) }
+                    .mapValues { (_, rows) -> rows.sumOf { it.done } }
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-                val current = nextPosition(doneByPosition, closed)
+                val current = rules.nextPosition(doneByPosition, closed)
                 val nameById = catalog.associate { it.id to it.name }
+                val byDay = circuitCounts.groupBy { Position(it.week, it.day) }
 
-                val heat = ALL_POSITIONS.map { p ->
+                val heat = rules.allPositions.map { p ->
+                    val counts = byDay[p].orEmpty().associate { it.circuit to it.done }
                     DaySummary(
                         week = p.week,
                         day = p.day,
                         done = doneByPosition[p] ?: 0,
-                        total = exercisesPerDay(p.week),
-                        closed = p in closed
+                        total = rules.exercisesPerDay(p.week),
+                        closed = p in closed,
+                        circuits = (1..rules.circuitsForWeek(p.week)).map { index ->
+                            CircuitProgress(
+                                index = index,
+                                done = counts[index] ?: 0,
+                                total = rules.exercisesPerCircuit
+                            )
+                        }
                     )
                 }
 
-                val trainingDates = times.map { trainingDate(it) }.toSet()
+                val trainingDates = times.map { trainingDate(it, rules.dayRolloverHour) }.toSet()
 
                 UiState.Ready(
                     CycleStats(
                         streak = streakDays(trainingDates, today()),
-                        exercisesDone = times.size,
-                        exercisesTotal = totalExercisesInCycle(),
-                        circuitsDone = heat.sumOf { it.done / com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT },
-                        circuitsTotal = totalCircuitsInCycle(),
+                        exercisesDone = heat.sumOf { it.done },
+                        exercisesTotal = rules.totalExercisesInCycle(),
+                        circuitsDone = heat.sumOf { day -> day.circuits.count { it.isComplete } },
+                        circuitsTotal = rules.totalCircuitsInCycle(),
                         daysTrained = trainingDates.size,
-                        weeks = (1..WEEKS).map { week ->
+                        weeks = (1..rules.weeks).map { week ->
                             WeekState(
                                 week = week,
-                                circuitsPerDay = circuitsForWeek(week),
+                                circuitsPerDay = rules.circuitsForWeek(week),
                                 days = heat.filter { it.week == week },
-                                isCurrent = current?.week == week
+                                isCurrent = current?.week == week,
+                                exercisesPerCircuit = rules.exercisesPerCircuit
                             )
                         },
                         heat = heat,
@@ -349,17 +373,19 @@ class TrackerRepository(
     fun observeCycleSummary(today: () -> LocalDate = { LocalDate.now() }): Flow<UiState<CycleSummary>> =
         activeCycle.flatMapLatest { cycle ->
             combine(
+                completions.observeDayCounts(cycle.id),
                 completions.observeCompletionTimes(cycle.id),
                 days.observeForCycle(cycle.id)
-            ) { times, dayRows ->
-                val trainingDates = times.map { trainingDate(it) }.toSet()
-                val started = trainingDate(cycle.startedAt)
+            ) { dayCounts, times, dayRows ->
+                val trainingDates = times.map { trainingDate(it, rules.dayRolloverHour) }.toSet()
+                val started = trainingDate(cycle.startedAt, rules.dayRolloverHour)
+                val exercisesDone = dayCounts.sumOf { it.done }
                 UiState.Ready(
                     CycleSummary(
-                        exercisesDone = times.size,
-                        exercisesTotal = totalExercisesInCycle(),
-                        circuitsDone = times.size / EXERCISES_PER_CIRCUIT,
-                        circuitsTotal = totalCircuitsInCycle(),
+                        exercisesDone = exercisesDone,
+                        exercisesTotal = rules.totalExercisesInCycle(),
+                        circuitsDone = exercisesDone / rules.exercisesPerCircuit,
+                        circuitsTotal = rules.totalCircuitsInCycle(),
                         daysTrained = trainingDates.size,
                         bestStreak = longestStreak(trainingDates),
                         elapsedDays = (ChronoUnit.DAYS.between(started, today()).toInt() + 1)

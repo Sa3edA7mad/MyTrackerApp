@@ -39,7 +39,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
 import com.example.mytrackerapp.domain.model.CircuitProgress
 import com.example.mytrackerapp.domain.model.DayState
 import com.example.mytrackerapp.domain.model.TodayView
@@ -135,6 +134,7 @@ fun TodayScreen(
                 CircuitCard(
                     index = circuit.index,
                     done = circuit.done,
+                    total = circuit.total,
                     state = when {
                         circuit.isComplete -> CircuitCardState.DONE
                         circuit.index == nextCircuit -> CircuitCardState.ACTIVE
@@ -228,7 +228,7 @@ private fun Header(day: DayState, onOpenSettings: () -> Unit, onEndDayEarly: () 
             )
             Text("Today", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
             Text(
-                "${day.circuitsTotal} circuits · $EXERCISES_PER_CIRCUIT exercises each",
+                "${day.circuitsTotal} circuits · ${day.exercisesPerCircuit} exercises each",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextTertiary
             )
@@ -422,10 +422,11 @@ private fun ErrorState(message: String) {
 private fun previewDay(week: Int = 2, done: List<Int> = listOf(13, 13, 13, 0, 0)) = DayState(
     week = week,
     day = 3,
-    circuits = done.mapIndexed { i, d -> CircuitProgress(i + 1, d) },
+    circuits = done.mapIndexed { i, d -> CircuitProgress(i + 1, d, total = 13) },
     warmUpDone = true,
     stretchDone = false,
-    closed = false
+    closed = false,
+    exercisesPerCircuit = 13
 )
 
 @Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)

@@ -8,12 +8,8 @@ import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.SeedCallback
 import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
 import com.example.mytrackerapp.domain.CIRCUIT_WARMUP
-import com.example.mytrackerapp.domain.DAYS_PER_WEEK
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
 import com.example.mytrackerapp.domain.Position
-import com.example.mytrackerapp.domain.WEEKS
-import com.example.mytrackerapp.domain.circuitsForWeek
-import com.example.mytrackerapp.domain.exercisesPerDay
+import com.example.mytrackerapp.domain.ProgramRules
 import com.example.mytrackerapp.domain.model.TodayView
 import com.example.mytrackerapp.domain.model.UiState
 import kotlinx.coroutines.flow.first
@@ -35,6 +31,8 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class FullCycleTest {
 
+    private val rules = ProgramRules.DEFAULT
+
     private lateinit var db: AppDatabase
     private lateinit var repo: TrackerRepository
     private lateinit var programIds: List<String>
@@ -54,7 +52,7 @@ class FullCycleTest {
                 db.exerciseDao().getByCategory("BAND")).map { it.id }
         warmUpIds = db.exerciseDao().getByCategory("WARMUP").map { it.id }
         stretchIds = db.exerciseDao().getByCategory("STRETCH").map { it.id }
-        assertEquals(EXERCISES_PER_CIRCUIT, programIds.size)
+        assertEquals(rules.exercisesPerCircuit, programIds.size)
     }
 
     @After
@@ -70,8 +68,8 @@ class FullCycleTest {
     fun theWholeCycleCompletesAndTheCounterNeverSlips() = runTest {
         var written = 0
 
-        for (week in 1..WEEKS) {
-            for (day in 1..DAYS_PER_WEEK) {
+        for (week in 1..rules.weeks) {
+            for (day in 1..rules.daysPerWeek) {
                 // The counter must be sitting on exactly this day before we start it.
                 assertEquals(
                     "counter should be on W$week D$day",
@@ -89,7 +87,7 @@ class FullCycleTest {
                     (today() as TodayView.Active).day.exercisesDone
                 )
 
-                for (circuit in 1..circuitsForWeek(week)) {
+                for (circuit in 1..rules.circuitsForWeek(week)) {
                     programIds.forEach { id ->
                         repo.setExerciseDone(week, day, circuit, id, true)
                         written++
@@ -100,10 +98,10 @@ class FullCycleTest {
                 repo.markRoutineDone(CIRCUIT_STRETCH)
 
                 // Day total must be exactly the week's size, routines excluded.
-                val isLastDay = week == WEEKS && day == DAYS_PER_WEEK
+                val isLastDay = week == rules.weeks && day == rules.daysPerWeek
                 if (!isLastDay) {
                     val next = activePosition()
-                    val expected = if (day < DAYS_PER_WEEK) {
+                    val expected = if (day < rules.daysPerWeek) {
                         Position(week, day + 1)
                     } else {
                         Position(week + 1, 1)
@@ -119,9 +117,9 @@ class FullCycleTest {
 
     @Test
     fun finishedCycleStatsAddUp() = runTest {
-        for (week in 1..WEEKS) {
-            for (day in 1..DAYS_PER_WEEK) {
-                for (circuit in 1..circuitsForWeek(week)) {
+        for (week in 1..rules.weeks) {
+            for (day in 1..rules.daysPerWeek) {
+                for (circuit in 1..rules.circuitsForWeek(week)) {
                     programIds.forEach { repo.setExerciseDone(week, day, circuit, it, true) }
                 }
             }
@@ -156,10 +154,10 @@ class FullCycleTest {
         // One short of a full day must NOT advance the counter; the last one must.
         // Only the boundary is asserted — collecting a flow after all 286 writes would
         // turn this into a multi-minute test for no extra coverage.
-        for (week in 1..WEEKS) {
-            val size = exercisesPerDay(week)
+        for (week in 1..rules.weeks) {
+            val size = rules.exercisesPerDay(week)
             var done = 0
-            for (circuit in 1..circuitsForWeek(week)) {
+            for (circuit in 1..rules.circuitsForWeek(week)) {
                 for (id in programIds) {
                     repo.setExerciseDone(week, 1, circuit, id, true)
                     done++
@@ -175,7 +173,7 @@ class FullCycleTest {
             assertEquals(size, done)
             assertEquals("W$week D1 did not settle at $size", Position(week, 2), activePosition())
             // Close the rest of this week so the loop can move to the next one.
-            (2..DAYS_PER_WEEK).forEach { repo.closeDayEarly(week, it) }
+            (2..rules.daysPerWeek).forEach { repo.closeDayEarly(week, it) }
         }
         assertTrue(today() is TodayView.CycleComplete)
     }

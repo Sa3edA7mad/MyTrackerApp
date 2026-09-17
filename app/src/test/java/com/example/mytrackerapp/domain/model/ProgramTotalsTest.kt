@@ -1,10 +1,6 @@
 package com.example.mytrackerapp.domain.model
 
-import com.example.mytrackerapp.domain.DAYS_PER_WEEK
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
-import com.example.mytrackerapp.domain.WEEKS
-import com.example.mytrackerapp.domain.circuitsForWeek
-import com.example.mytrackerapp.domain.exercisesPerDay
+import com.example.mytrackerapp.domain.ProgramRules
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -18,31 +14,44 @@ import org.junit.Test
  */
 class ProgramTotalsTest {
 
+    private val rules = ProgramRules.DEFAULT
+
+    /** Splits [done] sequentially across the week's circuits, matching how a day fills up. */
+    private fun circuitsFor(week: Int, done: Int): List<CircuitProgress> {
+        val perCircuit = rules.exercisesPerCircuit
+        return (1..rules.circuitsForWeek(week)).map { idx ->
+            val doneInThis = (done - (idx - 1) * perCircuit).coerceIn(0, perCircuit)
+            CircuitProgress(index = idx, done = doneInThis, total = perCircuit)
+        }
+    }
+
     private fun day(week: Int, day: Int, done: Int, closed: Boolean = false) = DaySummary(
         week = week,
         day = day,
         done = done,
-        total = exercisesPerDay(week),
-        closed = closed
+        total = rules.exercisesPerDay(week),
+        closed = closed,
+        circuits = circuitsFor(week, done)
     )
 
     private fun fullWeek(week: Int) = WeekState(
         week = week,
-        circuitsPerDay = circuitsForWeek(week),
-        days = (1..DAYS_PER_WEEK).map { day(week, it, exercisesPerDay(week)) },
-        isCurrent = false
+        circuitsPerDay = rules.circuitsForWeek(week),
+        days = (1..rules.daysPerWeek).map { day(week, it, rules.exercisesPerDay(week)) },
+        isCurrent = false,
+        exercisesPerCircuit = rules.exercisesPerCircuit
     )
 
     @Test
     fun `circuits per week read 24 30 36 42 and sum to 132`() {
-        val totals = (1..WEEKS).map { fullWeek(it).circuitsTotal }
+        val totals = (1..rules.weeks).map { fullWeek(it).circuitsTotal }
         assertEquals(listOf(24, 30, 36, 42), totals)
         assertEquals(132, totals.sum())
     }
 
     @Test
     fun `a fully complete week counts every one of its circuits`() {
-        (1..WEEKS).forEach { week ->
+        (1..rules.weeks).forEach { week ->
             val w = fullWeek(week)
             assertEquals(w.circuitsTotal, w.circuitsDone)
             assertEquals(w.exercisesTotal, w.exercisesDone)
@@ -51,7 +60,7 @@ class ProgramTotalsTest {
 
     @Test
     fun `exercises per week read 312 390 468 546 and sum to 1716`() {
-        val totals = (1..WEEKS).map { fullWeek(it).exercisesTotal }
+        val totals = (1..rules.weeks).map { fullWeek(it).exercisesTotal }
         assertEquals(listOf(312, 390, 468, 546), totals)
         assertEquals(1716, totals.sum())
     }
@@ -63,13 +72,20 @@ class ProgramTotalsTest {
             week = 1,
             circuitsPerDay = 4,
             days = listOf(day(1, 1, 26)) + (2..6).map { day(1, it, 0) },
-            isCurrent = true
+            isCurrent = true,
+            exercisesPerCircuit = rules.exercisesPerCircuit
         )
         assertEquals(2, w.circuitsDone)
         assertEquals(26, w.exercisesDone)
 
         // 25 is one circuit plus change, so still only one whole circuit.
-        val partial = WeekState(1, 4, listOf(day(1, 1, 25)), isCurrent = true)
+        val partial = WeekState(
+            week = 1,
+            circuitsPerDay = 4,
+            days = listOf(day(1, 1, 25)),
+            isCurrent = true,
+            exercisesPerCircuit = rules.exercisesPerCircuit
+        )
         assertEquals(1, partial.circuitsDone)
     }
 
@@ -121,7 +137,7 @@ class ProgramTotalsTest {
         streak = 0,
         exercisesDone = exercisesDone,
         exercisesTotal = exercisesTotal,
-        circuitsDone = exercisesDone / EXERCISES_PER_CIRCUIT,
+        circuitsDone = exercisesDone / rules.exercisesPerCircuit,
         circuitsTotal = 132,
         daysTrained = 0,
         weeks = emptyList(),

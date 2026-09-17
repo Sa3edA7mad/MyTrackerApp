@@ -36,8 +36,8 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.mytrackerapp.TrackerApplication
-import com.example.mytrackerapp.domain.DAYS_PER_WEEK
-import com.example.mytrackerapp.domain.WEEKS
+import com.example.mytrackerapp.domain.ProgramRules
+import com.example.mytrackerapp.domain.model.CircuitProgress
 import com.example.mytrackerapp.domain.model.CycleStats
 import com.example.mytrackerapp.domain.model.DaySummary
 import com.example.mytrackerapp.domain.model.ExerciseTally
@@ -153,10 +153,14 @@ fun ProgressScreen(stats: CycleStats) {
 
 @Composable
 private fun HeatMap(heat: List<DaySummary>) {
+    // Derived from the data rather than a fixed constant, so the grid follows whatever
+    // shape the active cycle's rules describe.
+    val weeks = heat.map { it.week }.distinct().sorted()
+    val daysPerWeek = heat.map { it.day }.distinct().sorted()
     Column(verticalArrangement = Arrangement.spacedBy(Spacing.xs)) {
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.xs)) {
             Box(Modifier.size(26.dp))
-            (1..DAYS_PER_WEEK).forEach { day ->
+            daysPerWeek.forEach { day ->
                 Box(Modifier.weight(1f), contentAlignment = Alignment.Center) {
                     Text(
                         "D$day",
@@ -166,7 +170,7 @@ private fun HeatMap(heat: List<DaySummary>) {
                 }
             }
         }
-        (1..WEEKS).forEach { week ->
+        weeks.forEach { week ->
             Row(
                 horizontalArrangement = Arrangement.spacedBy(Spacing.xs),
                 verticalAlignment = Alignment.CenterVertically
@@ -178,7 +182,7 @@ private fun HeatMap(heat: List<DaySummary>) {
                         color = TextTertiary
                     )
                 }
-                (1..DAYS_PER_WEEK).forEach { day ->
+                daysPerWeek.forEach { day ->
                     val cell = heat.firstOrNull { it.week == week && it.day == day }
                     Box(
                         Modifier
@@ -269,15 +273,28 @@ private fun WeekBar(week: WeekState) {
 /* ------------------------------------------------------------------ previews */
 
 private fun previewStats(empty: Boolean): CycleStats {
-    fun day(w: Int, d: Int, done: Int) =
-        DaySummary(w, d, done, (w + 3) * 13, closed = false)
+    val rules = ProgramRules.DEFAULT
+    fun day(w: Int, d: Int, done: Int): DaySummary {
+        val circuitsInWeek = rules.circuitsForWeek(w)
+        return DaySummary(
+            week = w, day = d, done = done,
+            total = circuitsInWeek * 13, closed = false,
+            circuits = (1..circuitsInWeek).map {
+                CircuitProgress(
+                    index = it,
+                    done = if (done >= it * 13) 13 else 0,
+                    total = 13
+                )
+            }
+        )
+    }
 
-    val heat = (1..WEEKS).flatMap { w ->
-        (1..DAYS_PER_WEEK).map { d ->
+    val heat = (1..rules.weeks).flatMap { w ->
+        (1..rules.daysPerWeek).map { d ->
             val done = when {
                 empty -> 0
-                w == 1 -> (w + 3) * 13
-                w == 2 && d < 3 -> (w + 3) * 13
+                w == 1 -> rules.circuitsForWeek(w) * 13
+                w == 2 && d < 3 -> rules.circuitsForWeek(w) * 13
                 w == 2 && d == 3 -> 26
                 else -> 0
             }
@@ -291,8 +308,14 @@ private fun previewStats(empty: Boolean): CycleStats {
         circuitsDone = heat.sumOf { it.done / 13 },
         circuitsTotal = 132,
         daysTrained = if (empty) 0 else 9,
-        weeks = (1..WEEKS).map { w ->
-            WeekState(w, w + 3, heat.filter { it.week == w }, isCurrent = w == 2)
+        weeks = (1..rules.weeks).map { w ->
+            WeekState(
+                week = w,
+                circuitsPerDay = rules.circuitsForWeek(w),
+                days = heat.filter { it.week == w },
+                isCurrent = w == 2,
+                exercisesPerCircuit = 13
+            )
         },
         heat = heat,
         mostDone = if (empty) emptyList() else listOf(
