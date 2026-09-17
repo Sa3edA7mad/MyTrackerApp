@@ -4,6 +4,9 @@ enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH }
 
 enum class TargetType { REPS, SECONDS }
 
+/** Decides circuit membership. Distinct from [Category], which is only the display badge. */
+enum class ExerciseSlot { PROGRAM, WARMUP, STRETCH }
+
 data class Exercise(
     val id: String,
     val name: String,
@@ -15,8 +18,23 @@ data class Exercise(
     val perSide: Boolean,
     val targetLabel: String,
     val videoUrl: String,
-    val sortOrder: Int
-)
+    val sortOrder: Int,
+    val slot: ExerciseSlot = ExerciseSlot.PROGRAM,
+    val enabled: Boolean = true,
+    val archivedAt: Long? = null,
+    val isCustom: Boolean = false,
+    val tracksReps: Boolean = false,
+    val tracksLoad: Boolean = false,
+    val defaultLoadKg: Double? = null,
+    val defaultBandLevel: String? = null,
+    val progressionStep: Int = 0
+) {
+    val isArchived: Boolean get() = archivedAt != null
+}
+
+/** Week w targets targetValue + progressionStep * (w - 1). progressionStep = 0 is the
+ *  original fixed-target behaviour. */
+fun Exercise.targetForWeek(week: Int): Int = targetValue + progressionStep * (week - 1)
 
 /** How far through one circuit the user is. [total] is the circuit's own exercise count. */
 data class CircuitProgress(val index: Int, val done: Int, val total: Int) {

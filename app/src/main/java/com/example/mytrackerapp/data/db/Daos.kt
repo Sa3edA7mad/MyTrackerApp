@@ -43,8 +43,39 @@ interface ExerciseDao {
     @Query("SELECT COUNT(*) FROM exercises")
     suspend fun count(): Int
 
+    /** Not archived — what the Library and any circuit should ever show. */
+    @Query("SELECT * FROM exercises WHERE archivedAt IS NULL ORDER BY sortOrder")
+    fun observeActive(): Flow<List<ExerciseEntity>>
+
+    @Query("SELECT * FROM exercises WHERE archivedAt IS NULL ORDER BY sortOrder")
+    suspend fun getActive(): List<ExerciseEntity>
+
+    @Query("SELECT * FROM exercises WHERE slot = :slot AND archivedAt IS NULL ORDER BY sortOrder")
+    fun observeBySlot(slot: String): Flow<List<ExerciseEntity>>
+
+    /** Enabled, not archived — the count that decides `exercisesPerCircuit`/warm-up/stretch counts. */
+    @Query(
+        "SELECT COUNT(*) FROM exercises WHERE slot = :slot AND enabled = 1 AND archivedAt IS NULL"
+    )
+    suspend fun countBySlot(slot: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<ExerciseEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(exercise: ExerciseEntity)
+
+    @Query("UPDATE exercises SET archivedAt = :ts WHERE id = :id")
+    suspend fun archive(id: String, ts: Long)
+
+    @Query("UPDATE exercises SET archivedAt = NULL WHERE id = :id")
+    suspend fun restore(id: String)
+
+    @Query("UPDATE exercises SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
+    @Query("UPDATE exercises SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun setSortOrder(id: String, sortOrder: Int)
 }
 
 @Dao

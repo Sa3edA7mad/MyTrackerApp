@@ -6,6 +6,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import androidx.test.platform.app.InstrumentationRegistry
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.MIGRATION_1_2
+import com.example.mytrackerapp.data.db.MIGRATION_2_3
 import org.junit.Assert.assertEquals
 import org.junit.Rule
 import org.junit.Test
@@ -73,6 +74,41 @@ class MigrationTest {
         migrated.query("SELECT exercisesPerCircuit FROM cycle_rules WHERE cycleId = 1").use { c ->
             c.moveToFirst()
             assertEquals(13, c.getInt(0))
+        }
+    }
+
+    @Test
+    fun migrate2To3() {
+        val dbName = "migration-test-2-3"
+
+        helper.createDatabase(dbName, 2).apply {
+            execSQL(
+                """INSERT INTO exercises
+                   (id, name, category, muscles, instructions, targetType, targetValue,
+                    perSide, targetLabel, videoUrl, sortOrder)
+                   VALUES ('neck_rolls', 'Neck Rolls', 'WARMUP', '', 'Roll your neck.',
+                           'REPS', 8, 0, '8 reps', '', 101)"""
+            )
+            execSQL(
+                """INSERT INTO exercises
+                   (id, name, category, muscles, instructions, targetType, targetValue,
+                    perSide, targetLabel, videoUrl, sortOrder)
+                   VALUES ('squat', 'Squat', 'BODYWEIGHT', 'Legs', 'Squat down.',
+                           'REPS', 5, 0, '5 reps', '', 1)"""
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(dbName, 3, true, MIGRATION_2_3)
+
+        migrated.query("SELECT slot, enabled FROM exercises WHERE id = 'neck_rolls'").use { c ->
+            c.moveToFirst()
+            assertEquals("WARMUP", c.getString(0))
+            assertEquals(1, c.getInt(1))
+        }
+        migrated.query("SELECT slot FROM exercises WHERE id = 'squat'").use { c ->
+            c.moveToFirst()
+            assertEquals("PROGRAM", c.getString(0))
         }
     }
 }

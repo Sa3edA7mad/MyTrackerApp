@@ -63,3 +63,27 @@ val MIGRATION_1_2 = object : Migration(1, 2) {
         )
     }
 }
+
+/**
+ * v2 -> v3: makes the exercise catalog editable. `slot` (PROGRAM/WARMUP/STRETCH) replaces
+ * `category` as what decides circuit membership — `category` becomes display-only. The
+ * rest are new mutability/tracking columns, all defaulted so existing rows need no
+ * further backfill beyond `slot`.
+ */
+val MIGRATION_2_3 = object : Migration(2, 3) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `slot` TEXT NOT NULL DEFAULT 'PROGRAM'")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `enabled` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `archivedAt` INTEGER DEFAULT NULL")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `isCustom` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `tracksReps` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `tracksLoad` INTEGER NOT NULL DEFAULT 0")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `defaultLoadKg` REAL DEFAULT NULL")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `defaultBandLevel` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE exercises ADD COLUMN `progressionStep` INTEGER NOT NULL DEFAULT 0")
+
+        db.execSQL("UPDATE exercises SET slot = 'WARMUP' WHERE category = 'WARMUP'")
+        db.execSQL("UPDATE exercises SET slot = 'STRETCH' WHERE category = 'STRETCH'")
+        db.execSQL("UPDATE exercises SET slot = 'PROGRAM' WHERE category IN ('BODYWEIGHT', 'BAND')")
+    }
+}

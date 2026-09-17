@@ -83,27 +83,27 @@ class RulesRepository(
     fun observeRulesFor(cycleId: Long): Flow<ProgramRules> =
         dao.observeCycleRules(cycleId).map { it?.toDomain() ?: ProgramRules.DEFAULT }
 
+    /**
+     * The program exercise ids in the order frozen when [cycleId] was snapshotted
+     * (INVARIANT 7) — archiving or reordering an exercise mid-cycle cannot retroactively
+     * change what a running circuit shows. Empty when the cycle predates snapshots.
+     */
+    fun observeProgramOrder(cycleId: Long): Flow<List<String>> =
+        dao.observeCycleRules(cycleId).map { entity ->
+            entity?.programExerciseIdsCsv?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
+        }
+
     /** Fills exercisesPerCircuit/warmUpCount/stretchCount from the live, enabled catalog. */
     private suspend fun ProgramRules.withDerivedCounts(): ProgramRules {
-        val program = exercises.countEnabledBySlotOrCategory("PROGRAM", listOf("BODYWEIGHT", "BAND"))
-        val warmUp = exercises.countEnabledBySlotOrCategory("WARMUP", listOf("WARMUP"))
-        val stretch = exercises.countEnabledBySlotOrCategory("STRETCH", listOf("STRETCH"))
+        val program = exercises.countBySlot("PROGRAM")
+        val warmUp = exercises.countBySlot("WARMUP")
+        val stretch = exercises.countBySlot("STRETCH")
         return copy(
             exercisesPerCircuit = if (program > 0) program else exercisesPerCircuit,
             warmUpCount = if (warmUp > 0) warmUp else warmUpCount,
             stretchCount = if (stretch > 0) stretch else stretchCount
         )
     }
-
-    /**
-     * Counts by the new `slot` column once T12 ships it; until then every exercise's
-     * category already partitions PROGRAM/WARMUP/STRETCH, so this falls back to counting
-     * by category so the draft is correct even before T12 lands.
-     */
-    private suspend fun ExerciseDao.countEnabledBySlotOrCategory(
-        @Suppress("UNUSED_PARAMETER") slot: String,
-        categories: List<String>
-    ): Int = getAll().count { it.category in categories }
 
     private fun defaultEntity(): ProgramRulesEntity {
         val d = ProgramRules.DEFAULT
@@ -179,8 +179,8 @@ class RulesRepository(
     suspend fun snapshotRules(cycleId: Long, rules: ProgramRules? = null) =
         withContext(Dispatchers.IO) {
             val effective = rules ?: getDraft()
-            val programIds = exercises.getAll()
-                .filter { it.category == "BODYWEIGHT" || it.category == "BAND" }
+            val programIds = exercises.getActive()
+                .filter { it.slot == "PROGRAM" && it.enabled }
                 .sortedBy { it.sortOrder }
                 .joinToString(",") { it.id }
 

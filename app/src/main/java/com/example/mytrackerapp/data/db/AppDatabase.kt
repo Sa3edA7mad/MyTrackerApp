@@ -23,7 +23,7 @@ import com.example.mytrackerapp.domain.ProgramRules
         ProgramRulesEntity::class,
         CycleRulesEntity::class
     ],
-    version = 2,
+    version = 3,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -46,7 +46,7 @@ abstract class AppDatabase : RoomDatabase() {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
                 .addCallback(SeedCallback)
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }
@@ -66,8 +66,10 @@ internal object SeedCallback : RoomDatabase.Callback() {
             db.execSQL(
                 """INSERT INTO exercises
                    (id, name, category, muscles, instructions, targetType, targetValue,
-                    perSide, targetLabel, videoUrl, sortOrder)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                    perSide, targetLabel, videoUrl, sortOrder, slot, enabled, archivedAt,
+                    isCustom, tracksReps, tracksLoad, defaultLoadKg, defaultBandLevel,
+                    progressionStep)
+                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?)""",
                 arrayOf<Any>(
                     e.id,
                     e.name,
@@ -79,7 +81,13 @@ internal object SeedCallback : RoomDatabase.Callback() {
                     if (e.perSide) 1 else 0,
                     e.targetLabel,
                     e.videoUrl,
-                    e.sortOrder
+                    e.sortOrder,
+                    e.slot,
+                    if (e.enabled) 1 else 0,
+                    if (e.isCustom) 1 else 0,
+                    if (e.tracksReps) 1 else 0,
+                    if (e.tracksLoad) 1 else 0,
+                    e.progressionStep
                 )
             )
         }

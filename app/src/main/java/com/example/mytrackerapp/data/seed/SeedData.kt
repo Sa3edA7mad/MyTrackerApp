@@ -418,6 +418,15 @@ object SeedData {
         )
     )
 
-    /** 13 + 8 + 8 = 29 */
-    val ALL_EXERCISES: List<ExerciseEntity> = MAIN + WARM_UP + STRETCHES
+    /** 13 + 8 + 8 = 29, with `slot` derived from `category` (T12: `slot` is what decides
+     *  circuit membership going forward; `category` stays as the display badge). */
+    val ALL_EXERCISES: List<ExerciseEntity> = (MAIN + WARM_UP + STRETCHES).map {
+        it.copy(
+            slot = when (it.category) {
+                WARMUP -> "WARMUP"
+                STRETCH -> "STRETCH"
+                else -> "PROGRAM"
+            }
+        )
+    }
 }

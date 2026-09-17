@@ -6,14 +6,14 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Static catalog: 13 program exercises + 8 warm-up moves + 8 stretches = 29 rows.
- * Seeded once on database create and never mutated at runtime.
+ * The exercise catalog. Seeded with 13 program exercises + 8 warm-up moves + 8 stretches
+ * on database create; editable at runtime from T14 onward (create/update/archive/reorder).
  */
 @Entity(tableName = "exercises")
 data class ExerciseEntity(
     @PrimaryKey val id: String,
     val name: String,
-    /** BODYWEIGHT | BAND | WARMUP | STRETCH */
+    /** BODYWEIGHT | BAND | WARMUP | STRETCH — the display badge only. */
     val category: String,
     /** "Legs · Glutes · Core"; empty for warm-up moves, which the sheet leaves blank. */
     val muscles: String,
@@ -27,7 +27,22 @@ data class ExerciseEntity(
     /** Verbatim from the sheet, e.g. "10 reps each side". Display only. */
     val targetLabel: String,
     val videoUrl: String,
-    val sortOrder: Int
+    val sortOrder: Int,
+    /** PROGRAM | WARMUP | STRETCH. Decides circuit membership — see TrackerRepository. */
+    val slot: String = "PROGRAM",
+    /** In the rotation or benched, without archiving. */
+    val enabled: Boolean = true,
+    /** Soft delete (INVARIANT 8's catalog equivalent). Archived rows never appear in a
+     *  circuit or the Library, but their completion history stays readable. */
+    val archivedAt: Long? = null,
+    /** User-created. "Restore default catalog" re-seeds the originals and leaves these alone. */
+    val isCustom: Boolean = false,
+    val tracksReps: Boolean = false,
+    val tracksLoad: Boolean = false,
+    val defaultLoadKg: Double? = null,
+    val defaultBandLevel: String? = null,
+    /** Added to targetValue per week: week w targets targetValue + progressionStep * (w-1). */
+    val progressionStep: Int = 0
 )
 
 @Entity(tableName = "cycles")

@@ -22,6 +22,7 @@ import com.example.mytrackerapp.domain.model.DayState
 import com.example.mytrackerapp.domain.model.DaySummary
 import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.ExerciseDetail
+import com.example.mytrackerapp.domain.model.ExerciseSlot
 import com.example.mytrackerapp.domain.model.ExerciseTally
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.TodayView
@@ -58,7 +59,16 @@ fun ExerciseEntity.toDomain(): Exercise = Exercise(
     perSide = perSide,
     targetLabel = targetLabel,
     videoUrl = videoUrl,
-    sortOrder = sortOrder
+    sortOrder = sortOrder,
+    slot = runCatching { ExerciseSlot.valueOf(slot) }.getOrDefault(ExerciseSlot.PROGRAM),
+    enabled = enabled,
+    archivedAt = archivedAt,
+    isCustom = isCustom,
+    tracksReps = tracksReps,
+    tracksLoad = tracksLoad,
+    defaultLoadKg = defaultLoadKg,
+    defaultBandLevel = defaultBandLevel,
+    progressionStep = progressionStep
 )
 
 /**
@@ -159,21 +169,23 @@ class TrackerRepository(
     fun observeCircuit(week: Int, day: Int, circuit: Int): Flow<UiState<CircuitView>> =
         activeRules.flatMapLatest { (cycle, rules) ->
             combine(
-                exercises.observeAll(),
+                exercises.observeActive(),
                 completions.observeExerciseIdsIn(cycle.id, week, day, circuit),
                 validCircuitCounts(cycle.id, rules),
-                days.observeForCycle(cycle.id)
-            ) { catalog, doneIds, circuitCounts, dayRows ->
+                days.observeForCycle(cycle.id),
+                rulesRepo.observeProgramOrder(cycle.id)
+            ) { catalog, doneIds, circuitCounts, dayRows, programOrder ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
 
-                val wanted = when (circuit) {
-                    CIRCUIT_WARMUP -> listOf(Category.WARMUP)
-                    CIRCUIT_STRETCH -> listOf(Category.STRETCH)
-                    else -> listOf(Category.BODYWEIGHT, Category.BAND)
+                val wantedSlot = when (circuit) {
+                    CIRCUIT_WARMUP -> "WARMUP"
+                    CIRCUIT_STRETCH -> "STRETCH"
+                    else -> "PROGRAM"
                 }
+                val orderIndex = programOrder.withIndex().associate { (i, id) -> id to i }
                 val list = catalog.map { it.toDomain() }
-                    .filter { it.category in wanted }
-                    .sortedBy { it.sortOrder }
+                    .filter { it.slot.name == wantedSlot }
+                    .sortedWith(compareBy({ orderIndex[it.id] ?: Int.MAX_VALUE }, { it.sortOrder }))
 
                 // INVARIANT 4: a day past the current position is a read-only preview,
                 // unless the rules have turned that lock off.
@@ -420,8 +432,9 @@ class TrackerRepository(
             }
         }
 
+    /** Active (not archived) catalog — what the Library browses. */
     fun observeCatalog(): Flow<List<Exercise>> =
-        exercises.observeAll().map { all -> all.map { it.toDomain() } }
+        exercises.observeActive().map { all -> all.map { it.toDomain() } }
 
     /** Catalog entry plus this cycle's history, for the exercise detail screen. */
     fun observeExerciseDetail(id: String): Flow<UiState<ExerciseDetail>> =
