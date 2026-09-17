@@ -6,8 +6,10 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.mytrackerapp.data.entity.CompletionEntity
 import com.example.mytrackerapp.data.entity.CycleEntity
+import com.example.mytrackerapp.data.entity.CycleRulesEntity
 import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
+import com.example.mytrackerapp.data.entity.ProgramRulesEntity
 import kotlinx.coroutines.flow.Flow
 
 /* --------------------------------------------------------------- projections */
@@ -109,11 +111,12 @@ interface DayDao {
 }
 
 /**
- * INVARIANT 2: every aggregate here filters `circuit >= 1`.
+ * INVARIANT 2: every aggregate here filters `circuit >= 1` unless [includeRoutines] is set.
  *
  * Warm-up (circuit 0) and stretch (circuit -1) completions are stored so a half-done
- * routine resumes, but they must never enter a day, week, or cycle total. Adding a
- * query without that filter will silently inflate every number in the app.
+ * routine resumes. Whether they enter a day/week/cycle total is now a rule
+ * (`ProgramRules.countRoutinesInTotals`), not a law — every aggregate query below still
+ * takes an explicit flag so nothing can silently forget to check it.
  */
 @Dao
 interface CompletionDao {
@@ -131,24 +134,24 @@ interface CompletionDao {
 
     @Query(
         """SELECT week, day, circuit, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY week, day, circuit"""
     )
-    fun observeCircuitCounts(cycleId: Long): Flow<List<CircuitCount>>
+    fun observeCircuitCounts(cycleId: Long, includeRoutines: Boolean = false): Flow<List<CircuitCount>>
 
     @Query(
         """SELECT week, day, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY week, day"""
     )
-    fun observeDayCounts(cycleId: Long): Flow<List<DayCount>>
+    fun observeDayCounts(cycleId: Long, includeRoutines: Boolean = false): Flow<List<DayCount>>
 
     @Query(
         """SELECT week, day, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY week, day"""
     )
-    suspend fun getDayCounts(cycleId: Long): List<DayCount>
+    suspend fun getDayCounts(cycleId: Long, includeRoutines: Boolean = false): List<DayCount>
 
     @Query(
         """SELECT exerciseId FROM completions
@@ -172,38 +175,51 @@ interface CompletionDao {
         circuit: Int
     ): List<String>
 
-    @Query("SELECT COUNT(*) FROM completions WHERE cycleId = :cycleId AND circuit >= 1")
-    fun observeTotalDone(cycleId: Long): Flow<Int>
+    @Query(
+        "SELECT COUNT(*) FROM completions WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)"
+    )
+    fun observeTotalDone(cycleId: Long, includeRoutines: Boolean = false): Flow<Int>
 
-    /** Progress screen only — can return up to 1,716 rows. Never call this from Today. */
-    @Query("SELECT completedAt FROM completions WHERE cycleId = :cycleId AND circuit >= 1")
-    fun observeCompletionTimes(cycleId: Long): Flow<List<Long>>
+    /** Progress screen only — can return up to a full cycle's worth of rows. Never call this from Today. */
+    @Query(
+        """SELECT completedAt FROM completions
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)"""
+    )
+    fun observeCompletionTimes(cycleId: Long, includeRoutines: Boolean = false): Flow<List<Long>>
 
     @Query(
         """SELECT exerciseId, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY exerciseId ORDER BY done DESC"""
     )
-    fun observeTallies(cycleId: Long): Flow<List<ExerciseCount>>
+    fun observeTallies(cycleId: Long, includeRoutines: Boolean = false): Flow<List<ExerciseCount>>
 
     @Query(
         """SELECT COUNT(*) FROM completions
-           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND circuit >= 1"""
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND (:includeRoutines OR circuit >= 1)"""
     )
-    fun observeCountForExercise(cycleId: Long, exerciseId: String): Flow<Int>
+    fun observeCountForExercise(
+        cycleId: Long,
+        exerciseId: String,
+        includeRoutines: Boolean = false
+    ): Flow<Int>
 
     @Query(
         """SELECT completedAt FROM completions
-           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND circuit >= 1"""
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND (:includeRoutines OR circuit >= 1)"""
     )
-    fun observeTimesForExercise(cycleId: Long, exerciseId: String): Flow<List<Long>>
+    fun observeTimesForExercise(
+        cycleId: Long,
+        exerciseId: String,
+        includeRoutines: Boolean = false
+    ): Flow<List<Long>>
 
     /**
      * Deliberately NOT filtered by circuit — the only such query in this DAO.
      *
      * INVARIANT 2 governs program *totals*. This feeds the per-exercise history on the
      * detail screen, where a warm-up move should be able to show "done 12 times" rather
-     * than always reading zero. Warm-up/stretch ids are disjoint from the 13 program
+     * than always reading zero. Warm-up/stretch ids are disjoint from the program
      * exercises, so for a program exercise this returns exactly the same rows as
      * [observeTimesForExercise]. Never use it for a day, week, or cycle total.
      */
@@ -218,4 +234,26 @@ interface CompletionDao {
 
     @Query("SELECT * FROM completions WHERE cycleId = :cycleId")
     suspend fun getAllForCycle(cycleId: Long): List<CompletionEntity>
+}
+
+@Dao
+interface RulesDao {
+
+    @Query("SELECT * FROM program_rules WHERE id = 1")
+    fun observeRules(): Flow<ProgramRulesEntity?>
+
+    @Query("SELECT * FROM program_rules WHERE id = 1")
+    suspend fun getRules(): ProgramRulesEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(rules: ProgramRulesEntity)
+
+    @Query("SELECT * FROM cycle_rules WHERE cycleId = :cycleId")
+    suspend fun getCycleRules(cycleId: Long): CycleRulesEntity?
+
+    @Query("SELECT * FROM cycle_rules WHERE cycleId = :cycleId")
+    fun observeCycleRules(cycleId: Long): Flow<CycleRulesEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCycleRules(rules: CycleRulesEntity)
 }

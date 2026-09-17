@@ -99,3 +99,61 @@ data class CompletionEntity(
     val exerciseId: String,
     val completedAt: Long
 )
+
+/**
+ * The single editable rule set, id is always 1. This is the *draft/default*: a running cycle
+ * reads its own [CycleRulesEntity] snapshot instead (INVARIANT 7).
+ */
+@Entity(tableName = "program_rules")
+data class ProgramRulesEntity(
+    @PrimaryKey val id: Int = 1,
+    val weeks: Int,
+    val daysPerWeek: Int,
+    /** Comma-separated, one entry per week, e.g. "4,5,6,7". */
+    val circuitsPerWeekCsv: String,
+    val dayRolloverHour: Int,
+    val warmUpEnabled: Boolean,
+    val stretchEnabled: Boolean,
+    val countRoutinesInTotals: Boolean,
+    val lockFutureDays: Boolean,
+    /** KG | LB — display only; loads are always stored in kilograms. */
+    val weightUnit: String,
+    /** CM | IN — display only; girths are always stored in centimetres. */
+    val lengthUnit: String,
+    val updatedAt: Long
+)
+
+/**
+ * INVARIANT 7: the rules a cycle started under, frozen. Reads for that cycle use this row.
+ *
+ * [programExerciseIdsCsv] freezes the circuit's composition too, so archiving an exercise
+ * mid-cycle cannot retroactively change what a completed circuit meant.
+ */
+@Entity(
+    tableName = "cycle_rules",
+    foreignKeys = [
+        ForeignKey(
+            entity = CycleEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["cycleId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class CycleRulesEntity(
+    @PrimaryKey val cycleId: Long,
+    val weeks: Int,
+    val daysPerWeek: Int,
+    val circuitsPerWeekCsv: String,
+    val exercisesPerCircuit: Int,
+    val warmUpCount: Int,
+    val stretchCount: Int,
+    val dayRolloverHour: Int,
+    val warmUpEnabled: Boolean,
+    val stretchEnabled: Boolean,
+    val countRoutinesInTotals: Boolean,
+    val lockFutureDays: Boolean,
+    /** Ordered exercise ids that made up a circuit when this snapshot was taken. */
+    val programExerciseIdsCsv: String,
+    val snapshotAt: Long
+)

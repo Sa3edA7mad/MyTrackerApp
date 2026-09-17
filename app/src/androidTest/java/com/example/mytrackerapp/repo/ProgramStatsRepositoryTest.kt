@@ -36,8 +36,11 @@ class ProgramStatsRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java)
             .addCallback(SeedCallback)
             .build()
+        val rulesRepo = RulesRepository(
+            db.rulesDao(), db.exerciseDao(), db.dayDao(), db.completionDao()
+        )
         repo = TrackerRepository(
-            db.exerciseDao(), db.cycleDao(), db.dayDao(), db.completionDao()
+            db.exerciseDao(), db.cycleDao(), db.dayDao(), db.completionDao(), rulesRepo
         )
     }
 

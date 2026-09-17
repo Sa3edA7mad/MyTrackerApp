@@ -1,5 +1,6 @@
 package com.example.mytrackerapp.repo
 
+import com.example.mytrackerapp.data.db.CircuitCount
 import com.example.mytrackerapp.data.db.CompletionDao
 import com.example.mytrackerapp.data.db.CycleDao
 import com.example.mytrackerapp.data.db.DayDao
@@ -68,45 +69,58 @@ class TrackerRepository(
     private val exercises: ExerciseDao,
     private val cycles: CycleDao,
     private val days: DayDao,
-    private val completions: CompletionDao
+    private val completions: CompletionDao,
+    private val rulesRepo: RulesRepository
 ) {
-
-    /**
-     * The rules a read is evaluated against.
-     *
-     * Deliberate placeholder: from T08 onward this reads the active cycle's frozen
-     * `cycle_rules` snapshot (INVARIANT 7) instead of the shipped default. Kept as a
-     * same-named property so that swap is a one-line change.
-     */
-    private val rules: ProgramRules get() = ProgramRules.DEFAULT
 
     /**
      * INVARIANT 1: there is always exactly one active cycle.
      *
      * The database callback opens the first one, but this is called defensively at the
-     * head of every read so no screen ever has to handle a null cycle.
+     * head of every read so no screen ever has to handle a null cycle. A freshly-created
+     * cycle is snapshotted immediately (INVARIANT 7) so it never reads as ruleless.
      */
     suspend fun ensureActiveCycle(): Long = withContext(Dispatchers.IO) {
-        cycles.getActive()?.id
-            ?: cycles.insert(CycleEntity(startedAt = System.currentTimeMillis()))
+        cycles.getActive()?.id ?: run {
+            val id = cycles.insert(CycleEntity(startedAt = System.currentTimeMillis()))
+            rulesRepo.snapshotRules(id)
+            id
+        }
     }
 
     private val activeCycle: Flow<CycleEntity> = cycles.observeActive()
         .onEach { if (it == null) ensureActiveCycle() }
         .filterNotNull()
 
+    /** The cycle paired with the rules it was snapshotted under (INVARIANT 7). */
+    private val activeRules: Flow<Pair<CycleEntity, ProgramRules>> =
+        activeCycle.flatMapLatest { cycle ->
+            rulesRepo.observeRulesFor(cycle.id).map { cycle to it }
+        }
+
+    /** INVARIANT 8: orphaned completions stay in the table but never enter a total. */
+    private fun validCircuitCounts(
+        cycleId: Long,
+        rules: ProgramRules
+    ): Flow<List<CircuitCount>> =
+        completions.observeCircuitCounts(cycleId, rules.countRoutinesInTotals)
+            .map { rows -> rows.filter { rules.isValidSlot(it.week, it.day, it.circuit) } }
+
+    private fun dayCountsFrom(circuitCounts: List<CircuitCount>): Map<Position, Int> =
+        circuitCounts.groupBy { Position(it.week, it.day) }
+            .mapValues { (_, rows) -> rows.sumOf { it.done } }
+
     /* ------------------------------------------------------------------ today */
 
-    fun observeToday(): Flow<UiState<TodayView>> = activeCycle.flatMapLatest { cycle ->
+    fun observeToday(): Flow<UiState<TodayView>> = activeRules.flatMapLatest { (cycle, rules) ->
         combine(
-            completions.observeCircuitCounts(cycle.id),
-            completions.observeDayCounts(cycle.id),
+            validCircuitCounts(cycle.id, rules),
             days.observeForCycle(cycle.id),
             exercises.observeAll()
-        ) { circuitCounts, dayCounts, dayRows, catalog ->
+        ) { circuitCounts, dayRows, catalog ->
             if (catalog.isEmpty()) return@combine UiState.Loading
 
-            val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
+            val doneByPosition = dayCountsFrom(circuitCounts)
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
 
@@ -143,13 +157,13 @@ class TrackerRepository(
      * @param circuit >= 1 for a program circuit, or CIRCUIT_WARMUP / CIRCUIT_STRETCH.
      */
     fun observeCircuit(week: Int, day: Int, circuit: Int): Flow<UiState<CircuitView>> =
-        activeCycle.flatMapLatest { cycle ->
+        activeRules.flatMapLatest { (cycle, rules) ->
             combine(
                 exercises.observeAll(),
                 completions.observeExerciseIdsIn(cycle.id, week, day, circuit),
-                completions.observeDayCounts(cycle.id),
+                validCircuitCounts(cycle.id, rules),
                 days.observeForCycle(cycle.id)
-            ) { catalog, doneIds, dayCounts, dayRows ->
+            ) { catalog, doneIds, circuitCounts, dayRows ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
 
                 val wanted = when (circuit) {
@@ -161,8 +175,9 @@ class TrackerRepository(
                     .filter { it.category in wanted }
                     .sortedBy { it.sortOrder }
 
-                // INVARIANT 4: a day past the current position is a read-only preview.
-                val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
+                // INVARIANT 4: a day past the current position is a read-only preview,
+                // unless the rules have turned that lock off.
+                val doneByPosition = dayCountsFrom(circuitCounts)
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
                 val current = rules.nextPosition(doneByPosition, closed)
@@ -191,24 +206,38 @@ class TrackerRepository(
      * `distinctUntilChanged` matters: without it every single checkbox tick re-emits the
      * same position and tears down whichever inner flow is collecting it.
      */
-    private fun currentPositionFlow(): Flow<Position?> = activeCycle.flatMapLatest { cycle ->
+    private fun currentPositionFlow(): Flow<Position?> = activeRules.flatMapLatest { (cycle, rules) ->
         combine(
-            completions.observeDayCounts(cycle.id),
+            validCircuitCounts(cycle.id, rules),
             days.observeForCycle(cycle.id)
-        ) { dayCounts, dayRows ->
+        ) { circuitCounts, dayRows ->
             rules.nextPosition(
-                dayCounts.associate { Position(it.week, it.day) to it.done },
+                dayCountsFrom(circuitCounts),
                 dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
             )
         }
     }.distinctUntilChanged()
 
-    private suspend fun currentPosition(cycleId: Long): Position? = rules.nextPosition(
-        completions.getDayCounts(cycleId).associate { Position(it.week, it.day) to it.done },
-        days.getForCycle(cycleId).filter { it.closedAt != null }
-            .map { Position(it.week, it.day) }.toSet()
-    )
+    /**
+     * One-shot equivalent of [validCircuitCounts]. `getDayCounts` cannot express the
+     * per-week circuit bound that makes a completion an orphan (INVARIANT 8), so this
+     * builds the same filtered view from the raw completion rows instead.
+     */
+    private suspend fun validDoneByPosition(cycleId: Long, rules: ProgramRules): Map<Position, Int> =
+        completions.getAllForCycle(cycleId)
+            .filter { rules.countsProgramSlot(it.circuit) && rules.isValidSlot(it.week, it.day, it.circuit) }
+            .groupBy { Position(it.week, it.day) }
+            .mapValues { (_, rows) -> rows.size }
+
+    private suspend fun currentPosition(cycleId: Long): Position? {
+        val rules = rulesRepo.rulesFor(cycleId)
+        return rules.nextPosition(
+            validDoneByPosition(cycleId, rules),
+            days.getForCycle(cycleId).filter { it.closedAt != null }
+                .map { Position(it.week, it.day) }.toSet()
+        )
+    }
 
     /**
      * Warm-up and stretch always belong to whatever day you are on, so unlike a circuit
@@ -248,13 +277,12 @@ class TrackerRepository(
 
     /* ---------------------------------------------------------------- program */
 
-    fun observeProgram(): Flow<UiState<List<WeekState>>> = activeCycle.flatMapLatest { cycle ->
+    fun observeProgram(): Flow<UiState<List<WeekState>>> = activeRules.flatMapLatest { (cycle, rules) ->
         combine(
-            completions.observeDayCounts(cycle.id),
-            completions.observeCircuitCounts(cycle.id),
+            validCircuitCounts(cycle.id, rules),
             days.observeForCycle(cycle.id)
-        ) { dayCounts, circuitCounts, dayRows ->
-            val doneByPosition = dayCounts.associate { Position(it.week, it.day) to it.done }
+        ) { circuitCounts, dayRows ->
+            val doneByPosition = dayCountsFrom(circuitCounts)
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
             val current = rules.nextPosition(doneByPosition, closed)
@@ -297,21 +325,17 @@ class TrackerRepository(
     /* ------------------------------------------------------------------ stats */
 
     fun observeCycleStats(today: () -> LocalDate = { LocalDate.now() }): Flow<UiState<CycleStats>> =
-        activeCycle.flatMapLatest { cycle ->
+        activeRules.flatMapLatest { (cycle, rules) ->
             combine(
-                completions.observeCircuitCounts(cycle.id),
-                completions.observeCompletionTimes(cycle.id),
-                completions.observeTallies(cycle.id),
+                validCircuitCounts(cycle.id, rules),
+                completions.observeCompletionTimes(cycle.id, rules.countRoutinesInTotals),
+                completions.observeTallies(cycle.id, rules.countRoutinesInTotals),
                 days.observeForCycle(cycle.id),
                 exercises.observeAll()
             ) { circuitCounts, times, tallies, dayRows, catalog ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
 
-                // Day totals derived from the same per-circuit counts used for the heat map,
-                // rather than a second query, so the two can never disagree.
-                val doneByPosition = circuitCounts
-                    .groupBy { Position(it.week, it.day) }
-                    .mapValues { (_, rows) -> rows.sumOf { it.done } }
+                val doneByPosition = dayCountsFrom(circuitCounts)
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
                 val current = rules.nextPosition(doneByPosition, closed)
@@ -371,15 +395,15 @@ class TrackerRepository(
      * live streak is often 1, which would undersell four weeks of work.
      */
     fun observeCycleSummary(today: () -> LocalDate = { LocalDate.now() }): Flow<UiState<CycleSummary>> =
-        activeCycle.flatMapLatest { cycle ->
+        activeRules.flatMapLatest { (cycle, rules) ->
             combine(
-                completions.observeDayCounts(cycle.id),
-                completions.observeCompletionTimes(cycle.id),
+                validCircuitCounts(cycle.id, rules),
+                completions.observeCompletionTimes(cycle.id, rules.countRoutinesInTotals),
                 days.observeForCycle(cycle.id)
-            ) { dayCounts, times, dayRows ->
+            ) { circuitCounts, times, dayRows ->
                 val trainingDates = times.map { trainingDate(it, rules.dayRolloverHour) }.toSet()
                 val started = trainingDate(cycle.startedAt, rules.dayRolloverHour)
-                val exercisesDone = dayCounts.sumOf { it.done }
+                val exercisesDone = circuitCounts.sumOf { it.done }
                 UiState.Ready(
                     CycleSummary(
                         exercisesDone = exercisesDone,
@@ -418,6 +442,13 @@ class TrackerRepository(
                 )
             }
         }
+
+    /** For the rules editor: how many completions are currently outside the active rules. */
+    suspend fun orphanedCompletionCount(): Int = withContext(Dispatchers.IO) {
+        val cycleId = ensureActiveCycle()
+        val rules = rulesRepo.rulesFor(cycleId)
+        completions.getAllForCycle(cycleId).count { !rules.isValidSlot(it.week, it.day, it.circuit) }
+    }
 
     /* ------------------------------------------------------------------ writes */
 
@@ -465,9 +496,11 @@ class TrackerRepository(
         days.close(cycleId, week, day, System.currentTimeMillis())
     }
 
+    /** INVARIANT 7: the new cycle is snapshotted from the current rules draft immediately. */
     suspend fun startNewCycle() = withContext(Dispatchers.IO) {
         cycles.getActive()?.let { cycles.complete(it.id, System.currentTimeMillis()) }
-        cycles.insert(CycleEntity(startedAt = System.currentTimeMillis()))
+        val id = cycles.insert(CycleEntity(startedAt = System.currentTimeMillis()))
+        rulesRepo.snapshotRules(id)
         Unit
     }
 
