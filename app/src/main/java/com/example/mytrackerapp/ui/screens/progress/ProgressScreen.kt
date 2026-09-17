@@ -44,6 +44,7 @@ import com.example.mytrackerapp.domain.model.ExerciseTally
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.domain.model.WeekState
 import com.example.mytrackerapp.repo.TrackerRepository
+import com.example.mytrackerapp.ui.components.ActionRow
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.components.SectionHeader
 import com.example.mytrackerapp.ui.components.StatTile
@@ -79,7 +80,10 @@ class ProgressViewModel(repo: TrackerRepository) : ViewModel() {
 }
 
 @Composable
-fun ProgressRoute(viewModel: ProgressViewModel = viewModel(factory = ProgressViewModel.Factory)) {
+fun ProgressRoute(
+    onOpenMeasure: () -> Unit,
+    viewModel: ProgressViewModel = viewModel(factory = ProgressViewModel.Factory)
+) {
     val state by viewModel.state.collectAsState()
 
     when (val s = state) {
@@ -88,12 +92,12 @@ fun ProgressRoute(viewModel: ProgressViewModel = viewModel(factory = ProgressVie
             Text(s.message, style = MaterialTheme.typography.bodyLarge, color = TextSecondary)
         }
 
-        is UiState.Ready -> ProgressScreen(s.data)
+        is UiState.Ready -> ProgressScreen(s.data, onOpenMeasure)
     }
 }
 
 @Composable
-fun ProgressScreen(stats: CycleStats) {
+fun ProgressScreen(stats: CycleStats, onOpenMeasure: () -> Unit = {}) {
     Column(
         Modifier
             .fillMaxSize()
@@ -126,6 +130,13 @@ fun ProgressScreen(stats: CycleStats) {
             WeekBar(week)
             Spacer(Modifier.height(Spacing.md))
         }
+
+        SectionHeader("Health")
+        ActionRow(
+            title = "Body measurements",
+            subtitle = "Weight, girths, resting heart rate and derived stats",
+            onClick = onOpenMeasure
+        )
 
         SectionHeader("Most done")
         if (stats.mostDone.isEmpty()) {

@@ -22,6 +22,7 @@ object Routes {
     const val CYCLE_COMPLETE = "cycleComplete"
     const val RULES = "rules"
     const val MEASURE = "measure"
+    const val MEASURE_CATALOG = "measureCatalog"
 
     const val ARG_WEEK = "week"
     const val ARG_DAY = "day"

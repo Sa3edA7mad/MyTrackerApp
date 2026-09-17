@@ -18,6 +18,9 @@ import com.example.mytrackerapp.ui.screens.circuit.CircuitRoute
 import com.example.mytrackerapp.ui.screens.complete.CycleCompleteRoute
 import com.example.mytrackerapp.ui.screens.exercise.ExerciseDetailRoute
 import com.example.mytrackerapp.ui.screens.library.LibraryRoute
+import com.example.mytrackerapp.ui.screens.measure.MeasureRoute
+import com.example.mytrackerapp.ui.screens.measure.MetricCatalogRoute
+import com.example.mytrackerapp.ui.screens.measure.MetricHistoryRoute
 import com.example.mytrackerapp.ui.screens.program.ProgramRoute
 import com.example.mytrackerapp.ui.screens.progress.ProgressRoute
 import com.example.mytrackerapp.ui.screens.rules.RulesRoute
@@ -69,7 +72,9 @@ fun AppRoot() {
                     }
                 )
             }
-            composable(Routes.PROGRESS) { ProgressRoute() }
+            composable(Routes.PROGRESS) {
+                ProgressRoute(onOpenMeasure = { nav.navigate(Routes.MEASURE) })
+            }
             composable(Routes.LIBRARY) {
                 LibraryRoute(
                     onOpenExercise = { id -> nav.navigate(Routes.exercise(id)) },
@@ -79,11 +84,29 @@ fun AppRoot() {
             composable(Routes.SETTINGS) {
                 SettingsRoute(
                     onBack = { nav.popBackStack() },
-                    onOpenRules = { nav.navigate(Routes.RULES) }
+                    onOpenRules = { nav.navigate(Routes.RULES) },
+                    onOpenMeasure = { nav.navigate(Routes.MEASURE) }
                 )
             }
             composable(Routes.RULES) {
                 RulesRoute(onBack = { nav.popBackStack() })
+            }
+            composable(Routes.MEASURE) {
+                MeasureRoute(
+                    onBack = { nav.popBackStack() },
+                    onOpenHistory = { metricId -> nav.navigate(Routes.metricHistory(metricId)) },
+                    onEditMetrics = { nav.navigate(Routes.MEASURE_CATALOG) }
+                )
+            }
+            composable(Routes.MEASURE_CATALOG) {
+                MetricCatalogRoute(onBack = { nav.popBackStack() })
+            }
+            composable(
+                route = Routes.METRIC_HISTORY_PATTERN,
+                arguments = listOf(navArgument(Routes.ARG_METRIC_ID) { type = NavType.StringType })
+            ) { entry ->
+                val metricId = entry.arguments?.getString(Routes.ARG_METRIC_ID).orEmpty()
+                MetricHistoryRoute(metricId = metricId, onBack = { nav.popBackStack() })
             }
             composable(Routes.CYCLE_COMPLETE) {
                 CycleCompleteRoute(

@@ -113,6 +113,7 @@ class SettingsViewModel(
 fun SettingsRoute(
     onBack: () -> Unit,
     onOpenRules: () -> Unit,
+    onOpenMeasure: () -> Unit,
     viewModel: SettingsViewModel = viewModel(factory = SettingsViewModel.Factory)
 ) {
     val settings by viewModel.settings.collectAsState()
@@ -138,6 +139,7 @@ fun SettingsRoute(
         snackbars = snackbars,
         onBack = onBack,
         onOpenRules = onOpenRules,
+        onOpenMeasure = onOpenMeasure,
         onGuided = viewModel::setGuidedMode,
         onHaptics = viewModel::setHaptics,
         onSound = viewModel::setSoundCues,
@@ -154,6 +156,7 @@ fun SettingsScreen(
     snackbars: SnackbarHostState,
     onBack: () -> Unit,
     onOpenRules: () -> Unit,
+    onOpenMeasure: () -> Unit,
     onGuided: (Boolean) -> Unit,
     onHaptics: (Boolean) -> Unit,
     onSound: (Boolean) -> Unit,
@@ -196,6 +199,13 @@ fun SettingsScreen(
                 title = "Program rules",
                 subtitle = "Weeks, days, circuits, warm-up/stretch, counting and locking",
                 onClick = onOpenRules
+            )
+
+            SectionHeader("Health")
+            ActionRow(
+                title = "Body measurements",
+                subtitle = "Weight, girths, resting heart rate and derived stats",
+                onClick = onOpenMeasure
             )
 
             SectionHeader("Session")
@@ -272,7 +282,7 @@ private fun SettingsPreview() {
         SettingsScreen(
             settings = Settings(),
             snackbars = remember { SnackbarHostState() },
-            onBack = {}, onOpenRules = {}, onGuided = {}, onHaptics = {}, onSound = {},
+            onBack = {}, onOpenRules = {}, onOpenMeasure = {}, onGuided = {}, onHaptics = {}, onSound = {},
             onKeepAwake = {}, onAutoAdvance = {}, onExport = {}, onResetCycle = {}
         )
     }
