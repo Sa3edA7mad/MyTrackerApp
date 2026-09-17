@@ -38,6 +38,7 @@ import com.example.mytrackerapp.data.prefs.Settings
 import com.example.mytrackerapp.domain.model.CircuitView
 import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.TargetType
+import com.example.mytrackerapp.domain.model.targetForWeek
 import com.example.mytrackerapp.ui.components.AppIcons
 import com.example.mytrackerapp.ui.components.CategoryChip
 import com.example.mytrackerapp.ui.components.GhostButton
@@ -72,7 +73,9 @@ fun GuidedPager(
     view: CircuitView,
     settings: Settings,
     overline: String,
-    onDone: (String) -> Unit,
+    /** Marks the exercise done, then invokes the second parameter to advance the pager —
+     *  giving the caller a chance to collect reps/load first (T21) before moving on. */
+    onDone: (String, () -> Unit) -> Unit,
     onExit: () -> Unit,
     onFinished: () -> Unit,
     onSwitchToChecklist: (() -> Unit)?,
@@ -93,8 +96,9 @@ fun GuidedPager(
 
     KeepScreenOn(settings.keepScreenOn)
 
+    val target = exercise.targetForWeek(view.week)
     val timer = rememberHoldTimer(
-        totalSeconds = exercise.targetValue,
+        totalSeconds = target,
         resetKey = "$identity-$index-$stage"
     )
     val timed = exercise.targetType == TargetType.SECONDS
@@ -113,14 +117,10 @@ fun GuidedPager(
             when (stage) {
                 STAGE_FIRST -> stage = STAGE_SWITCH
                 STAGE_SWITCH -> stage = STAGE_SECOND
-                else -> {
-                    onDone(exercise.id)
-                    goNext()
-                }
+                else -> onDone(exercise.id) { goNext() }
             }
         } else {
-            onDone(exercise.id)
-            goNext()
+            onDone(exercise.id) { goNext() }
         }
     }
 
@@ -194,7 +194,7 @@ fun GuidedPager(
             when {
                 stage == STAGE_SWITCH -> SwitchSidesPanel()
                 timed -> HoldTimerDial(timer)
-                else -> RepTarget(exercise)
+                else -> RepTarget(exercise, target)
             }
 
             Spacer(Modifier.height(Spacing.xl))
@@ -204,7 +204,7 @@ fun GuidedPager(
 
         StickyCtaBar {
             PrimaryActions(
-                exercise = exercise,
+                target = target,
                 stage = stage,
                 timed = timed,
                 timer = timer,
@@ -235,7 +235,7 @@ fun GuidedPager(
 
 @Composable
 private fun PrimaryActions(
-    exercise: Exercise,
+    target: Int,
     stage: Int,
     timed: Boolean,
     timer: HoldTimerState,
@@ -263,7 +263,7 @@ private fun PrimaryActions(
         }
 
         else ->
-            PrimaryButton("Start · ${exercise.targetValue} sec", { timer.start() }, enabled = enabled)
+            PrimaryButton("Start · $target sec", { timer.start() }, enabled = enabled)
     }
 }
 
@@ -367,7 +367,7 @@ private fun SwitchSidesPanel() {
 }
 
 @Composable
-private fun RepTarget(exercise: Exercise) {
+private fun RepTarget(exercise: Exercise, target: Int) {
     Box(
         Modifier
             .size(180.dp)
@@ -377,7 +377,7 @@ private fun RepTarget(exercise: Exercise) {
     ) {
         Column(horizontalAlignment = Alignment.CenterHorizontally) {
             Text(
-                "${exercise.targetValue}",
+                "$target",
                 style = MaterialTheme.typography.displayLarge,
                 color = Accent
             )

@@ -124,7 +124,7 @@ fun RoutineRoute(
                 view = view,
                 settings = settings,
                 overline = "$label · WEEK ${view.week} DAY ${view.day}",
-                onDone = { id -> viewModel.setDone(id, true) },
+                onDone = { id, onLogged -> viewModel.setDone(id, true); onLogged() },
                 onExit = onExit,
                 onFinished = {
                     // Reaching the end counts as done even if individual moves were

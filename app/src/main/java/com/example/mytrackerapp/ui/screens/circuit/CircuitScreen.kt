@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.theme.Accent
@@ -26,6 +27,9 @@ import com.example.mytrackerapp.ui.theme.Spacing
 import com.example.mytrackerapp.ui.theme.Surface as SurfaceColor
 import com.example.mytrackerapp.ui.theme.TextPrimary
 import com.example.mytrackerapp.ui.theme.TextSecondary
+
+/** An exercise waiting on the log sheet before its completion (and advance) is written. */
+private data class PendingLog(val exercise: Exercise, val onLogged: () -> Unit)
 
 @Composable
 fun CircuitRoute(
@@ -40,9 +44,11 @@ fun CircuitRoute(
 ) {
     val state by viewModel.state.collectAsState()
     val settings by viewModel.settings.collectAsState()
+    val unitPrefs by viewModel.unitPrefs.collectAsState()
 
     var showSummary by remember { mutableStateOf(false) }
     var restartKey by remember { mutableIntStateOf(0) }
+    var pendingLog by remember { mutableStateOf<PendingLog?>(null) }
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -62,12 +68,22 @@ fun CircuitRoute(
         is UiState.Ready -> {
             val view = s.data
 
+            fun requestDone(exerciseId: String, onLogged: () -> Unit) {
+                val exercise = view.exercises.firstOrNull { it.id == exerciseId }
+                if (exercise != null && (exercise.tracksReps || exercise.tracksLoad)) {
+                    pendingLog = PendingLog(exercise, onLogged)
+                } else {
+                    viewModel.setDone(exerciseId, true)
+                    onLogged()
+                }
+            }
+
             if (settings.guidedMode) {
                 GuidedPager(
                     view = view,
                     settings = settings,
                     overline = "CIRCUIT $circuit · WEEK $week DAY $day",
-                    onDone = { id -> viewModel.setDone(id, true) },
+                    onDone = { id, onLogged -> requestDone(id, onLogged) },
                     onExit = onExit,
                     onFinished = { showSummary = true },
                     onSwitchToChecklist = { viewModel.setGuidedMode(false) },
@@ -78,9 +94,30 @@ fun CircuitRoute(
                     view = view,
                     title = "Circuit $circuit",
                     hapticsEnabled = settings.haptics,
-                    onToggle = { id, done -> viewModel.setDone(id, done) },
+                    onToggle = { id, done ->
+                        if (done) requestDone(id) {} else viewModel.setDone(id, false)
+                    },
                     onExit = onExit,
                     onSwitchToGuided = { viewModel.setGuidedMode(true) }
+                )
+            }
+
+            pendingLog?.let { pending ->
+                LogSetSheet(
+                    exercise = pending.exercise,
+                    week = view.week,
+                    unitPrefs = unitPrefs,
+                    loadLastDetail = { viewModel.lastDetail(pending.exercise.id) },
+                    onSave = { detail ->
+                        viewModel.setDone(pending.exercise.id, true, detail)
+                        pendingLog = null
+                        pending.onLogged()
+                    },
+                    onSkip = {
+                        viewModel.setDone(pending.exercise.id, true, null)
+                        pendingLog = null
+                        pending.onLogged()
+                    }
                 )
             }
 
