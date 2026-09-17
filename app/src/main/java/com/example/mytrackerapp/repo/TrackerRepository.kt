@@ -28,9 +28,12 @@ import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.TodayView
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.domain.model.WeekState
+import com.example.mytrackerapp.domain.PerformanceSummary
+import com.example.mytrackerapp.domain.SetLog
 import com.example.mytrackerapp.domain.longestStreak
 import com.example.mytrackerapp.domain.recentTallies
 import com.example.mytrackerapp.domain.streakDays
+import com.example.mytrackerapp.domain.summarise
 import com.example.mytrackerapp.domain.trainingDate
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -47,6 +50,16 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
+
+/** What can be logged against a single completed set. All optional — see INVARIANT 5. */
+data class SetDetail(
+    val reps: Int? = null,
+    val loadKg: Double? = null,
+    val bandLevel: String? = null,
+    val holdSeconds: Int? = null,
+    val rpe: Int? = null,
+    val note: String? = null
+)
 
 fun ExerciseEntity.toDomain(): Exercise = Exercise(
     id = id,
@@ -456,6 +469,56 @@ class TrackerRepository(
             }
         }
 
+    /** Rolling performance summary for the exercise detail screen's performance section. */
+    fun observePerformance(exerciseId: String): Flow<PerformanceSummary> =
+        activeRules.flatMapLatest { (cycle, rules) ->
+            completions.observeSetLogs(cycle.id, exerciseId).map { rows ->
+                summarise(
+                    rows.map { SetLog(it.completedAt, it.reps, it.loadKg, it.holdSeconds, it.rpe) },
+                    rolloverHour = rules.dayRolloverHour
+                )
+            }
+        }
+
+    /** Writes reps/load/etc. onto an already-ticked completion, without changing its presence. */
+    suspend fun updateSetDetail(
+        week: Int,
+        day: Int,
+        circuit: Int,
+        exerciseId: String,
+        detail: SetDetail
+    ) = withContext(Dispatchers.IO) {
+        val cycleId = ensureActiveCycle()
+        completions.updateDetail(
+            cycleId = cycleId,
+            week = week,
+            day = day,
+            circuit = circuit,
+            exerciseId = exerciseId,
+            reps = detail.reps,
+            loadKg = detail.loadKg,
+            bandLevel = detail.bandLevel,
+            holdSeconds = detail.holdSeconds,
+            rpe = detail.rpe,
+            note = detail.note
+        )
+    }
+
+    /** Most recently logged detail for an exercise, to pre-fill the next set's sheet. */
+    suspend fun lastDetailFor(exerciseId: String): SetDetail? = withContext(Dispatchers.IO) {
+        val cycleId = ensureActiveCycle()
+        completions.getLastDetail(cycleId, exerciseId)?.let {
+            SetDetail(
+                reps = it.reps,
+                loadKg = it.loadKg,
+                bandLevel = it.bandLevel,
+                holdSeconds = it.holdSeconds,
+                rpe = it.rpe,
+                note = it.note
+            )
+        }
+    }
+
     /** For the rules editor: how many completions are currently outside the active rules. */
     suspend fun orphanedCompletionCount(): Int = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
@@ -470,7 +533,8 @@ class TrackerRepository(
         day: Int,
         circuit: Int,
         exerciseId: String,
-        done: Boolean
+        done: Boolean,
+        detail: SetDetail? = null
     ) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
         ensureDayRow(cycleId, week, day)
@@ -482,7 +546,13 @@ class TrackerRepository(
                     day = day,
                     circuit = circuit,
                     exerciseId = exerciseId,
-                    completedAt = System.currentTimeMillis()
+                    completedAt = System.currentTimeMillis(),
+                    reps = detail?.reps,
+                    loadKg = detail?.loadKg,
+                    bandLevel = detail?.bandLevel,
+                    holdSeconds = detail?.holdSeconds,
+                    rpe = detail?.rpe,
+                    note = detail?.note
                 )
             )
         } else {

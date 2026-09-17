@@ -7,7 +7,9 @@ import androidx.test.platform.app.InstrumentationRegistry
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.MIGRATION_1_2
 import com.example.mytrackerapp.data.db.MIGRATION_2_3
+import com.example.mytrackerapp.data.db.MIGRATION_3_4
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -109,6 +111,41 @@ class MigrationTest {
         migrated.query("SELECT slot FROM exercises WHERE id = 'squat'").use { c ->
             c.moveToFirst()
             assertEquals("PROGRAM", c.getString(0))
+        }
+    }
+
+    @Test
+    fun migrate3To4() {
+        val dbName = "migration-test-3-4"
+
+        helper.createDatabase(dbName, 3).apply {
+            execSQL(
+                "INSERT INTO cycles (id, startedAt, completedAt, isActive) VALUES (1, 1000, NULL, 1)"
+            )
+            execSQL(
+                """INSERT INTO completions (cycleId, week, day, circuit, exerciseId, completedAt)
+                   VALUES (1, 1, 1, 1, 'squat', 2000)"""
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(dbName, 4, true, MIGRATION_3_4)
+
+        // Existing rows survive with NULL detail — presence, not detail, is the truth.
+        migrated.query(
+            "SELECT reps, loadKg, bandLevel, holdSeconds, rpe, note FROM completions WHERE exerciseId = 'squat'"
+        ).use { c ->
+            c.moveToFirst()
+            for (col in 0..5) assertNull(c.getString(col))
+        }
+
+        // The double-tap-idempotency index must have survived the ALTER TABLE.
+        migrated.query(
+            """SELECT COUNT(*) FROM sqlite_master
+               WHERE type = 'index' AND name = 'index_completions_cycleId_week_day_circuit_exerciseId'"""
+        ).use { c ->
+            c.moveToFirst()
+            assertEquals(1, c.getInt(0))
         }
     }
 }

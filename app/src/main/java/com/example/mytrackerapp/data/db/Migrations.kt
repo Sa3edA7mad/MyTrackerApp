@@ -87,3 +87,20 @@ val MIGRATION_2_3 = object : Migration(2, 3) {
         db.execSQL("UPDATE exercises SET slot = 'PROGRAM' WHERE category IN ('BODYWEIGHT', 'BAND')")
     }
 }
+
+/**
+ * v3 -> v4: adds optional set-detail columns to `completions` for rep/load logging.
+ * All six are nullable with no backfill — NULL means "not logged", which is exactly
+ * right for every row recorded before this feature existed (INVARIANT 5: every aggregate
+ * stays a `COUNT(*)` regardless of whether these are set).
+ */
+val MIGRATION_3_4 = object : Migration(3, 4) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL("ALTER TABLE completions ADD COLUMN `reps` INTEGER DEFAULT NULL")
+        db.execSQL("ALTER TABLE completions ADD COLUMN `loadKg` REAL DEFAULT NULL")
+        db.execSQL("ALTER TABLE completions ADD COLUMN `bandLevel` TEXT DEFAULT NULL")
+        db.execSQL("ALTER TABLE completions ADD COLUMN `holdSeconds` INTEGER DEFAULT NULL")
+        db.execSQL("ALTER TABLE completions ADD COLUMN `rpe` INTEGER DEFAULT NULL")
+        db.execSQL("ALTER TABLE completions ADD COLUMN `note` TEXT DEFAULT NULL")
+    }
+}

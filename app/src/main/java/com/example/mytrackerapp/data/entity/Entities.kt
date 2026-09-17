@@ -112,7 +112,21 @@ data class CompletionEntity(
     /** >= 1 program circuit | 0 warm-up | -1 stretch. See INVARIANT 2. */
     val circuit: Int,
     val exerciseId: String,
-    val completedAt: Long
+    val completedAt: Long,
+    /**
+     * Optional set detail. All nullable and never backfilled (INVARIANT 5 stays load-bearing:
+     * every aggregate is a `COUNT(*)` and must keep working whether or not these are set).
+     * NULL means "not logged", which is the honest value for every row recorded before this
+     * feature existed and for any set where logging is off or skipped.
+     */
+    val reps: Int? = null,
+    /** Always kilograms — the unit setting converts only at display (see domain/Units.kt). */
+    val loadKg: Double? = null,
+    val bandLevel: String? = null,
+    val holdSeconds: Int? = null,
+    /** 1-10 perceived effort. */
+    val rpe: Int? = null,
+    val note: String? = null
 )
 
 /**

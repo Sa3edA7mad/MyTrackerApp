@@ -265,6 +265,43 @@ interface CompletionDao {
 
     @Query("SELECT * FROM completions WHERE cycleId = :cycleId")
     suspend fun getAllForCycle(cycleId: Long): List<CompletionEntity>
+
+    @Query(
+        """UPDATE completions SET reps = :reps, loadKg = :loadKg, bandLevel = :bandLevel,
+           holdSeconds = :holdSeconds, rpe = :rpe, note = :note
+           WHERE cycleId = :cycleId AND week = :week AND day = :day
+             AND circuit = :circuit AND exerciseId = :exerciseId"""
+    )
+    suspend fun updateDetail(
+        cycleId: Long,
+        week: Int,
+        day: Int,
+        circuit: Int,
+        exerciseId: String,
+        reps: Int?,
+        loadKg: Double?,
+        bandLevel: String?,
+        holdSeconds: Int?,
+        rpe: Int?,
+        note: String?
+    )
+
+    /** Most recent logged detail for an exercise — used to pre-fill the next set's sheet. */
+    @Query(
+        """SELECT * FROM completions
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId
+             AND (reps IS NOT NULL OR loadKg IS NOT NULL OR holdSeconds IS NOT NULL)
+           ORDER BY completedAt DESC LIMIT 1"""
+    )
+    suspend fun getLastDetail(cycleId: Long, exerciseId: String): CompletionEntity?
+
+    /** Every set of this exercise this cycle, logged or not — feeds [summarise]. */
+    @Query(
+        """SELECT * FROM completions
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId
+           ORDER BY completedAt ASC"""
+    )
+    fun observeSetLogs(cycleId: Long, exerciseId: String): Flow<List<CompletionEntity>>
 }
 
 @Dao
