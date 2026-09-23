@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.example.mytrackerapp.data.prefs.Settings
 import com.example.mytrackerapp.domain.model.CircuitView
 import com.example.mytrackerapp.domain.model.Exercise
+import com.example.mytrackerapp.domain.model.formVideoUrl
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.targetForWeek
 import com.example.mytrackerapp.ui.components.AppIcons
@@ -413,7 +414,7 @@ private fun InstructionCard(exercise: Exercise) {
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Radius.sm))
-                .clickable(role = Role.Button) { openVideo(context, exercise.videoUrl) }
+                .clickable(role = Role.Button) { openVideo(context, exercise.formVideoUrl) }
                 .padding(vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm)

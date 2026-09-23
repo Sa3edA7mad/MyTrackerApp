@@ -49,6 +49,7 @@ import com.example.mytrackerapp.domain.PerformanceSummary
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.DayTally
 import com.example.mytrackerapp.domain.model.Exercise
+import com.example.mytrackerapp.domain.model.formVideoUrl
 import com.example.mytrackerapp.domain.model.ExerciseDetail
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.UiState
@@ -229,9 +230,9 @@ fun ExerciseDetailScreen(
                     .background(SurfaceColor)
                     .border(1.dp, Outline, RoundedCornerShape(Radius.md))
                     .clickable(role = Role.Button) {
-                        if (!openVideo(context, exercise.videoUrl)) {
+                        if (!openVideo(context, exercise.formVideoUrl)) {
                             scope.launch {
-                                snackbars.showSnackbar("No app can open ${exercise.videoUrl}")
+                                snackbars.showSnackbar("No app can open ${exercise.formVideoUrl}")
                             }
                         }
                     }

@@ -1,5 +1,7 @@
 package com.example.mytrackerapp.domain.model
 
+import com.example.mytrackerapp.domain.youtubeSearchUrl
+
 enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH }
 
 enum class TargetType { REPS, SECONDS }
@@ -31,6 +33,15 @@ data class Exercise(
 ) {
     val isArchived: Boolean get() = archivedAt != null
 }
+
+/**
+ * The stored link, or a YouTube search for the name when none was entered — so every
+ * exercise, including ones added in the editor, has a form video.
+ *
+ * Resolved here rather than in `toDomain()` on purpose: the editor loads the raw
+ * [Exercise.videoUrl], so a blank field stays blank and the search follows later renames.
+ */
+val Exercise.formVideoUrl: String get() = videoUrl.ifBlank { youtubeSearchUrl(name) }
 
 /** Week w targets targetValue + progressionStep * (w - 1). progressionStep = 0 is the
  *  original fixed-target behaviour. */

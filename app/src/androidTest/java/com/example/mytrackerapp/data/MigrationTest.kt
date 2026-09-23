@@ -11,6 +11,7 @@ import com.example.mytrackerapp.data.db.MIGRATION_1_2
 import com.example.mytrackerapp.data.db.MIGRATION_2_3
 import com.example.mytrackerapp.data.db.MIGRATION_3_4
 import com.example.mytrackerapp.data.db.MIGRATION_4_5
+import com.example.mytrackerapp.data.db.MIGRATION_5_6
 import com.example.mytrackerapp.data.db.SeedCallback
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
@@ -175,6 +176,34 @@ class MigrationTest {
         }
     }
 
+    @Test
+    fun migrate5To6() {
+        val dbName = "migration-test-5-6"
+        helper.createDatabase(dbName, 5).apply {
+            fun insert(id: String, url: String) = execSQL(
+                """INSERT INTO exercises
+                   (id, name, category, muscles, instructions, targetType, targetValue, perSide,
+                    targetLabel, videoUrl, sortOrder, slot, enabled, archivedAt, isCustom,
+                    tracksReps, tracksLoad, defaultLoadKg, defaultBandLevel, progressionStep)
+                   VALUES ('$id', '$id', 'BODYWEIGHT', '', '', 'REPS', 5, 0, '5 reps', '$url',
+                           1, 'PROGRAM', 1, NULL, 0, 0, 0, NULL, NULL, 0)"""
+            )
+            insert(
+                "dead_hang",
+                "https://www.youtube.com/results?search_query=Dead%20Hang%20exercise%20proper%20form"
+            )
+            insert("push_up", "https://www.youtube.com/watch?v=WDIpL0pjun0")
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(dbName, 6, true, MIGRATION_5_6)
+
+        fun url(id: String) = migrated.query("SELECT videoUrl FROM exercises WHERE id = '$id'")
+            .use { c -> c.moveToFirst(); c.getString(0) }
+        assertEquals("https://www.youtube.com/results?search_query=Dead%20Hang", url("dead_hang"))
+        assertEquals("https://www.youtube.com/watch?v=WDIpL0pjun0", url("push_up"))
+    }
+
     /**
      * INVARIANT 9: a fresh install ([SeedCallback]) and a migrated-from-v1 install
      * (every Migration) must agree on program_rules and metrics content. This is what
@@ -192,7 +221,8 @@ class MigrationTest {
         val dbName = "migration-test-fresh-vs-migrated"
         helper.createDatabase(dbName, 1).close()
         val migrated = helper.runMigrationsAndValidate(
-            dbName, 5, true, MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5
+            dbName, 6, true,
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
         )
 
         migrated.query(

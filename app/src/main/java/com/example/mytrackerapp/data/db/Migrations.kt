@@ -136,3 +136,18 @@ val MIGRATION_4_5 = object : Migration(4, 5) {
         }
     }
 }
+
+/**
+ * v5 -> v6: data only. Strips the " exercise proper form" suffix from seeded YouTube
+ * search links so installed catalogs match the new [SeedData], which searches for the
+ * exercise name alone. The schema is unchanged.
+ */
+val MIGRATION_5_6 = object : Migration(5, 6) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        db.execSQL(
+            """UPDATE exercises
+               SET videoUrl = REPLACE(videoUrl, '%20exercise%20proper%20form', '')
+               WHERE instr(videoUrl, 'youtube.com/results?search_query=') > 0"""
+        )
+    }
+}

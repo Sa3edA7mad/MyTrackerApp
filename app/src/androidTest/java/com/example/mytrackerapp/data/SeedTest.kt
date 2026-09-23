@@ -119,6 +119,8 @@ class SeedTest {
         )
         assertEquals(4, all.count { it.videoUrl.contains("/watch?v=") })
         assertEquals(25, all.count { it.videoUrl.contains("/results?search_query=") })
+        // Searches are for the exercise name alone.
+        assertTrue(all.none { it.videoUrl.contains("proper") })
     }
 
     @Test

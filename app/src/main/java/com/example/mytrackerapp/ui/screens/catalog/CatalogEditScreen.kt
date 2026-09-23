@@ -400,6 +400,12 @@ fun CatalogEditScreen(
 
                 Spacer(Modifier.height(Spacing.md))
                 LabeledField("Video URL", state.videoUrl, { onChange { s -> s.copy(videoUrl = it) } })
+                Spacer(Modifier.height(Spacing.xs))
+                Text(
+                    "Leave blank to search YouTube for the exercise name.",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = TextTertiary
+                )
 
                 SectionHeader("Rotation")
                 SettingRow(
