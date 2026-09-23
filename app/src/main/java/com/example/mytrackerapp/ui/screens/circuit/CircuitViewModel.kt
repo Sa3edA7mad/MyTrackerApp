@@ -47,6 +47,13 @@ class CircuitViewModel(
         viewModelScope.launch { repo.setExerciseDone(week, day, circuit, exerciseId, done, detail) }
     }
 
+    /** List view's "Complete all": plain ticks, no rep/load detail. */
+    fun completeAll(exerciseIds: List<String>) {
+        viewModelScope.launch {
+            exerciseIds.forEach { repo.setExerciseDone(week, day, circuit, it, true) }
+        }
+    }
+
     /** Pre-fill source for the log sheet — the most recently logged detail for this exercise. */
     suspend fun lastDetail(exerciseId: String): SetDetail? = repo.lastDetailFor(exerciseId)
 

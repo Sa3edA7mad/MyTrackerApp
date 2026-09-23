@@ -83,10 +83,19 @@ fun GuidedPager(
     /** Bump to send the pager back to the first unticked exercise. */
     restartKey: Int = 0,
     /** Extra full-width action, e.g. "Skip warm-up" on the routine screens. */
-    secondaryAction: Pair<String, () -> Unit>? = null
+    secondaryAction: Pair<String, () -> Unit>? = null,
+    /** Open on this exercise instead of the first unticked one. */
+    startExerciseId: String? = null,
+    /** Run only that exercise; finishing it calls [onFinished]. Used from list view. */
+    singleExercise: Boolean = false
 ) {
     val identity = "${view.week}/${view.day}/${view.circuit}"
-    var index by rememberSaveable(identity, restartKey) { mutableIntStateOf(view.firstUndoneIndex) }
+    var index by rememberSaveable(identity, restartKey, startExerciseId) {
+        mutableIntStateOf(
+            view.exercises.indexOfFirst { it.id == startExerciseId }.takeIf { it >= 0 }
+                ?: view.firstUndoneIndex
+        )
+    }
     var stage by rememberSaveable(index, identity) { mutableIntStateOf(STAGE_FIRST) }
 
     val exercise = view.exercises.getOrNull(index)
@@ -106,6 +115,10 @@ fun GuidedPager(
     if (timed) TimerCues(timer, settings.soundCues, settings.haptics)
 
     fun goNext() {
+        if (singleExercise) {
+            onFinished()
+            return
+        }
         if (index + 1 >= view.exercises.size) onFinished() else {
             index += 1
             stage = STAGE_FIRST
@@ -213,7 +226,11 @@ fun GuidedPager(
                 onAdvance = { advance() }
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                GhostButton("Skip", onClick = { goNext() }, modifier = Modifier.weight(1f))
+                if (singleExercise) {
+                    GhostButton("Back to list", onClick = onExit, modifier = Modifier.weight(1f))
+                } else {
+                    GhostButton("Skip", onClick = { goNext() }, modifier = Modifier.weight(1f))
+                }
                 if (onSwitchToChecklist != null) {
                     GhostButton(
                         "⇄ Checklist",

@@ -188,7 +188,7 @@ fun TargetBadge(text: String, modifier: Modifier = Modifier) {
 /* ------------------------------------------------------------------ checkbox */
 
 @Composable
-private fun CheckMark(done: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
+internal fun CheckMark(done: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
     val borderColor = when {
         done -> Accent
         enabled -> OutlineStrong

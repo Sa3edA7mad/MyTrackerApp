@@ -1,5 +1,6 @@
 package com.example.mytrackerapp.ui.screens.circuit
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,6 +15,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -49,6 +51,10 @@ fun CircuitRoute(
     var showSummary by remember { mutableStateOf(false) }
     var restartKey by remember { mutableIntStateOf(0) }
     var pendingLog by remember { mutableStateOf<PendingLog?>(null) }
+    // The exercise opened from list view, run on its own in the guided pager.
+    var focusId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = focusId != null) { focusId = null }
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -78,7 +84,22 @@ fun CircuitRoute(
                 }
             }
 
-            if (settings.guidedMode) {
+            val focus = focusId
+            if (focus != null) {
+                GuidedPager(
+                    // List view may complete a locked future day, so its single-exercise
+                    // run may too.
+                    view = view.copy(editable = true),
+                    settings = settings,
+                    overline = "CIRCUIT $circuit · WEEK $week DAY $day",
+                    onDone = { id, onLogged -> requestDone(id, onLogged) },
+                    onExit = { focusId = null },
+                    onFinished = { focusId = null },
+                    onSwitchToChecklist = null,
+                    startExerciseId = focus,
+                    singleExercise = true
+                )
+            } else if (settings.guidedMode) {
                 GuidedPager(
                     view = view,
                     settings = settings,
@@ -98,7 +119,13 @@ fun CircuitRoute(
                         if (done) requestDone(id) {} else viewModel.setDone(id, false)
                     },
                     onExit = onExit,
-                    onSwitchToGuided = { viewModel.setGuidedMode(true) }
+                    onSwitchToGuided = { viewModel.setGuidedMode(true) },
+                    onOpenExercise = { focusId = it },
+                    onCompleteAll = {
+                        viewModel.completeAll(
+                            view.exercises.map { it.id }.filterNot { it in view.doneIds }
+                        )
+                    }
                 )
             }
 

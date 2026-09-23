@@ -1,5 +1,6 @@
 package com.example.mytrackerapp.ui.screens.routine
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
@@ -9,8 +10,12 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
@@ -31,6 +36,7 @@ import com.example.mytrackerapp.repo.TrackerRepository
 import com.example.mytrackerapp.ui.RoutineType
 import com.example.mytrackerapp.ui.components.GhostButton
 import com.example.mytrackerapp.ui.components.LoadingState
+import com.example.mytrackerapp.ui.screens.circuit.ChecklistMode
 import com.example.mytrackerapp.ui.screens.circuit.GuidedPager
 import com.example.mytrackerapp.ui.theme.Spacing
 import com.example.mytrackerapp.ui.theme.TextSecondary
@@ -56,6 +62,17 @@ class RoutineViewModel(
     }
 
     /** Sets the day flag. Used both by "finished" and by "skip" — see RoutineRoute. */
+    fun completeAll(exerciseIds: List<String>) {
+        viewModelScope.launch {
+            exerciseIds.forEach { repo.setRoutineExerciseDone(routineCircuit, it, true) }
+        }
+    }
+
+    /** Same global default as circuits: switching here switches everywhere. */
+    fun setGuidedMode(guided: Boolean) {
+        viewModelScope.launch { settingsStore.setGuidedMode(guided) }
+    }
+
     fun markDone() {
         viewModelScope.launch { repo.markRoutineDone(routineCircuit) }
     }
@@ -74,9 +91,9 @@ class RoutineViewModel(
 /**
  * Warm-up and stretch.
  *
- * Deliberately guided-only (`onSwitchToChecklist = null`): these are eight short moves,
- * the stretches are timed holds that want the countdown dial, and a flat checklist would
- * have no natural "I'm finished" action to hang the day flag on.
+ * Follows the same guided / list preference as circuits. The guided pager sets the day
+ * flag when you reach the end; list view sets it once every move is ticked, and its
+ * "Done with …" button sets it early (the flag records "I warmed up", not a tally).
  */
 @Composable
 fun RoutineRoute(
@@ -99,6 +116,10 @@ fun RoutineRoute(
     val state by viewModel.state.collectAsState()
     val settings by viewModel.settings.collectAsState()
 
+    // The move opened from list view, run on its own in the guided pager.
+    var focusId by rememberSaveable { mutableStateOf<String?>(null) }
+    BackHandler(enabled = focusId != null) { focusId = null }
+
     when (val s = state) {
         is UiState.Loading -> LoadingState()
 
@@ -120,24 +141,65 @@ fun RoutineRoute(
 
         is UiState.Ready -> {
             val view = s.data
-            GuidedPager(
-                view = view,
-                settings = settings,
-                overline = "$label · WEEK ${view.week} DAY ${view.day}",
-                onDone = { id, onLogged -> viewModel.setDone(id, true); onLogged() },
-                onExit = onExit,
-                onFinished = {
-                    // Reaching the end counts as done even if individual moves were
-                    // skipped — the day flag records "I warmed up", not a per-move tally.
-                    viewModel.markDone()
-                    onExit()
-                },
-                onSwitchToChecklist = null,
-                secondaryAction = "Skip ${label.lowercase()}" to {
-                    viewModel.markDone()
-                    onExit()
+            val focus = focusId
+
+            if (!settings.guidedMode) {
+                LaunchedEffect(view.isComplete) {
+                    if (view.total > 0 && view.isComplete) viewModel.markDone()
                 }
-            )
+            }
+
+            if (focus != null) {
+                GuidedPager(
+                    view = view.copy(editable = true),
+                    settings = settings,
+                    overline = "$label · WEEK ${view.week} DAY ${view.day}",
+                    onDone = { id, onLogged -> viewModel.setDone(id, true); onLogged() },
+                    onExit = { focusId = null },
+                    onFinished = { focusId = null },
+                    onSwitchToChecklist = null,
+                    startExerciseId = focus,
+                    singleExercise = true
+                )
+            } else if (!settings.guidedMode) {
+                ChecklistMode(
+                    view = view,
+                    title = label.lowercase().replaceFirstChar { it.uppercase() },
+                    hapticsEnabled = settings.haptics,
+                    onToggle = { id, done -> viewModel.setDone(id, done) },
+                    onExit = onExit,
+                    onSwitchToGuided = { viewModel.setGuidedMode(true) },
+                    onOpenExercise = { focusId = it },
+                    onCompleteAll = {
+                        viewModel.completeAll(
+                            view.exercises.map { it.id }.filterNot { it in view.doneIds }
+                        )
+                    },
+                    finishAction = "Done with ${label.lowercase()}" to {
+                        viewModel.markDone()
+                        onExit()
+                    }
+                )
+            } else {
+                GuidedPager(
+                    view = view,
+                    settings = settings,
+                    overline = "$label · WEEK ${view.week} DAY ${view.day}",
+                    onDone = { id, onLogged -> viewModel.setDone(id, true); onLogged() },
+                    onExit = onExit,
+                    onFinished = {
+                        // Reaching the end counts as done even if individual moves were
+                        // skipped — the day flag records "I warmed up", not a per-move tally.
+                        viewModel.markDone()
+                        onExit()
+                    },
+                    onSwitchToChecklist = { viewModel.setGuidedMode(false) },
+                    secondaryAction = "Skip ${label.lowercase()}" to {
+                        viewModel.markDone()
+                        onExit()
+                    }
+                )
+            }
         }
     }
 }
