@@ -62,18 +62,67 @@ class ProgramRulesTest {
 
     @Test
     fun `nextPosition with nothing done is the first position`() {
-        assertEquals(Position(1, 1), default.nextPosition(emptyMap(), emptySet()))
+        assertEquals(Position(1, 1), default.nextPosition(emptyMap(), emptySet(), emptySet()))
     }
 
     @Test
-    fun `nextPosition is null when every day is fully done`() {
+    fun `nextPosition is null when every day is fully done and stretched`() {
         val done = default.allPositions.associateWith { default.exercisesPerDay(it.week) }
-        assertNull(default.nextPosition(done, emptySet()))
+        assertNull(default.nextPosition(done, default.allPositions.toSet(), emptySet()))
     }
 
     @Test
     fun `nextPosition is null when every day is closed`() {
-        assertNull(default.nextPosition(emptyMap(), default.allPositions.toSet()))
+        assertNull(default.nextPosition(emptyMap(), emptySet(), default.allPositions.toSet()))
+    }
+
+    @Test
+    fun `all circuits done but stretch not done does not advance the day`() {
+        // Regression: caught live on device. Finishing all 4 circuits of Week 1 Day 1
+        // jumped straight to Day 2 without the stretch routine ever being reachable,
+        // because settlement originally ignored stretch entirely.
+        val done = mapOf(Position(1, 1) to default.exercisesPerDay(1))
+        assertEquals(Position(1, 1), default.nextPosition(done, emptySet(), emptySet()))
+    }
+
+    @Test
+    fun `stretch completion is what releases a fully-exercised day`() {
+        val done = mapOf(Position(1, 1) to default.exercisesPerDay(1))
+        val stretched = setOf(Position(1, 1))
+        assertEquals(Position(1, 2), default.nextPosition(done, stretched, emptySet()))
+    }
+
+    @Test
+    fun `stretch done alone with no exercises does not settle the day`() {
+        assertEquals(
+            Position(1, 1),
+            default.nextPosition(emptyMap(), setOf(Position(1, 1)), emptySet())
+        )
+    }
+
+    @Test
+    fun `closing a day early releases the counter regardless of stretch`() {
+        // INVARIANT 3: without this escape, an abandoned day traps the cycle forever.
+        val done = mapOf(Position(1, 1) to 10)
+        val closed = setOf(Position(1, 1))
+        assertEquals(Position(1, 2), default.nextPosition(done, emptySet(), closed))
+    }
+
+    @Test
+    fun `isDaySettled requires stretch even when the exercise count is satisfied`() {
+        assertFalse(default.isDaySettled(week = 1, doneCount = 52, stretchDone = false, closed = false))
+        assertTrue(default.isDaySettled(week = 1, doneCount = 52, stretchDone = true, closed = false))
+    }
+
+    @Test
+    fun `isDaySettled closed overrides both the exercise count and the stretch flag`() {
+        assertTrue(default.isDaySettled(week = 1, doneCount = 0, stretchDone = false, closed = true))
+    }
+
+    @Test
+    fun `isDaySettled does not require stretch when stretch is disabled`() {
+        val rules = default.copy(stretchEnabled = false)
+        assertTrue(rules.isDaySettled(week = 1, doneCount = 52, stretchDone = false, closed = false))
     }
 
     @Test

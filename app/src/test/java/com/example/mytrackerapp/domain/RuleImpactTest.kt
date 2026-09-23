@@ -13,9 +13,12 @@ class RuleImpactTest {
     private val completedW1D1: List<Triple<Int, Int, Int>> =
         (1..4).flatMap { circuit -> (1..13).map { Triple(1, 1, circuit) } }
 
+    /** Stretch also done for W1D1, so it actually settles (INVARIANT 3's stretch gate). */
+    private val stretchedW1D1: Set<Position> = setOf(Position(1, 1))
+
     @Test
     fun `no change is lossless and does not move backwards`() {
-        val impact = RuleImpact.analyse(default, default, completedW1D1, emptySet())
+        val impact = RuleImpact.analyse(default, default, completedW1D1, stretchedW1D1, emptySet())
         assertTrue(impact.isLossless)
         assertEquals(0, impact.daysReopened)
         assertEquals(0, impact.orphanedCompletions)
@@ -25,7 +28,7 @@ class RuleImpactTest {
     @Test
     fun `raising exercises per circuit reopens the day and moves back`() {
         val to = default.copy(exercisesPerCircuit = 14)
-        val impact = RuleImpact.analyse(default, to, completedW1D1, emptySet())
+        val impact = RuleImpact.analyse(default, to, completedW1D1, stretchedW1D1, emptySet())
         assertEquals(1, impact.daysReopened)
         assertTrue(impact.positionMovesBack)
         assertEquals(1848, impact.newTotal)
@@ -34,7 +37,7 @@ class RuleImpactTest {
     @Test
     fun `lowering exercises per circuit does not reopen or orphan`() {
         val to = default.copy(exercisesPerCircuit = 12)
-        val impact = RuleImpact.analyse(default, to, completedW1D1, emptySet())
+        val impact = RuleImpact.analyse(default, to, completedW1D1, stretchedW1D1, emptySet())
         assertEquals(0, impact.daysReopened)
         assertEquals(0, impact.orphanedCompletions)
     }
@@ -42,7 +45,7 @@ class RuleImpactTest {
     @Test
     fun `shrinking to one week keeps existing completions valid`() {
         val to = default.copy(weeks = 1, circuitsPerWeek = listOf(4))
-        val impact = RuleImpact.analyse(default, to, completedW1D1, emptySet())
+        val impact = RuleImpact.analyse(default, to, completedW1D1, stretchedW1D1, emptySet())
         assertEquals(6, impact.newDays)
         assertEquals(0, impact.orphanedCompletions)
     }
@@ -50,7 +53,7 @@ class RuleImpactTest {
     @Test
     fun `shrinking week 1 circuits orphans the removed circuits without reopening`() {
         val to = default.copy(circuitsPerWeek = listOf(2, 5, 6, 7))
-        val impact = RuleImpact.analyse(default, to, completedW1D1, emptySet())
+        val impact = RuleImpact.analyse(default, to, completedW1D1, stretchedW1D1, emptySet())
         assertEquals(26, impact.orphanedCompletions)
         assertEquals(0, impact.daysReopened)
     }

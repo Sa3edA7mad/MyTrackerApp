@@ -50,16 +50,33 @@ data class ProgramRules(
 
     fun totalCircuitsInCycle(): Int = (1..weeks).sumOf { circuitsForWeek(it) * daysPerWeek }
 
-    /** INVARIANT 3. */
-    fun isDaySettled(week: Int, doneCount: Int, closed: Boolean): Boolean =
-        closed || doneCount >= exercisesPerDay(week)
+    /**
+     * INVARIANT 3: a day is settled when it is fully complete AND stretched (when stretch
+     * is enabled), OR the user closed it early.
+     *
+     * `stretchDone` is required alongside the exercise count, not just carried for display.
+     * Without it, the day settles the instant the last circuit exercise is ticked, and the
+     * counter jumps to the next day before the stretch routine is ever reachable — orphaning
+     * it, since the routine screen always resolves to the *current* day, never a past one.
+     * When [stretchEnabled] is off there is no stretch to gate on, so the exercise count
+     * alone settles the day.
+     */
+    fun isDaySettled(week: Int, doneCount: Int, stretchDone: Boolean, closed: Boolean): Boolean =
+        closed || (doneCount >= exercisesPerDay(week) && (!stretchEnabled || stretchDone))
 
-    /** First unsettled day in program order, or null when the cycle is finished. */
+    /**
+     * First unsettled day in program order, or null when the cycle is finished.
+     *
+     * @param doneByPosition completion counts for `circuit >= 1` only (INVARIANT 2), unless
+     *   [countRoutinesInTotals] is on.
+     * @param stretchDonePositions days whose stretch routine has been completed.
+     */
     fun nextPosition(
         doneByPosition: Map<Position, Int>,
+        stretchDonePositions: Set<Position>,
         closedPositions: Set<Position>
     ): Position? = allPositions.firstOrNull { p ->
-        !isDaySettled(p.week, doneByPosition[p] ?: 0, p in closedPositions)
+        !isDaySettled(p.week, doneByPosition[p] ?: 0, p in stretchDonePositions, p in closedPositions)
     }
 
     fun isAfter(candidate: Position, current: Position): Boolean =

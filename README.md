@@ -1,36 +1,53 @@
 # MyTrackerApp
 
-An Android app for tracking a workout program, built with Jetpack Compose, Room, and Navigation.
-The program's shape (weeks, days, circuit sizes, warm-up/stretch, counting and locking rules) and
-its exercise catalog are both editable in-app rather than hard-coded, and the app tracks reps,
-load, and body measurements alongside the original checkbox-based completion tracking.
+A native Android tracker for a workout program, built with Jetpack Compose, Room, and
+Navigation Compose. Offline-only — no accounts, no network calls. The program's shape
+(weeks, days, circuit sizes, warm-up/stretch, counting and locking rules) and its exercise
+catalog are both editable in-app rather than hard-coded, and tracking goes beyond a
+checkbox: reps, load, and body measurements are all first-class.
 
 ## Features
 
-- **Program rules editor** (Settings → Program rules) — weeks, days per week, circuits per week,
-  warm-up/stretch toggles, whether they count toward totals, whether future days are locked, the
-  day-rollover hour, and display units. Edits save to a *draft* and only affect a running cycle
-  once you explicitly apply them; the impact (days reopened, completions orphaned) is shown before
-  you confirm.
-- **Exercise catalog editor** (Library → `+` / edit) — add, edit, reorder, archive and restore
-  exercises; archiving keeps an exercise's history readable without it staying in the rotation.
-  Program-slot exercises drive the *draft* rules' circuit size live; a running cycle keeps the
-  composition it was snapshotted with until rules are applied.
-- **Rep/load logging** — an exercise can be flagged to prompt for reps and/or load when ticked.
-  The prompt pre-fills from the exercise's last logged set (or its weekly target/default), and
-  skipping the prompt never blocks finishing a circuit. Exercises without logging enabled behave
-  exactly as a plain checkbox, unchanged.
-- **Body measurements** (Progress / Settings → Body measurements) — log a whole measuring session
-  at once against a catalog of 17 default metrics (or your own custom ones), see per-metric
-  history with a trend sparkline, and derived stats (BMI, waist-to-hip, waist-to-height, lean
-  mass). Values are always stored in kilograms/centimetres/percent; the unit toggle only affects
-  display.
+- **Today** — the current day's circuits, warm-up, and stretch, with live progress.
+- **Guided circuit mode** — one exercise at a time, with an auto-advancing hold timer
+  (audio cues at 3-2-1-0, since the phone is usually out of easy reach mid-hold) for
+  timed exercises, and a two-stage side-1/side-2 flow for per-side exercises. An exercise
+  flagged to track reps and/or load prompts for them when ticked, pre-filled from its last
+  logged set (or its weekly target/default); skipping the prompt never blocks finishing a
+  circuit, and exercises without logging enabled stay a plain single-tap checkbox.
+- **Checklist mode** — the same circuit as a flat, tickable list. Switching modes
+  mid-circuit preserves progress and resumes at the right exercise either way.
+- **Program** — all weeks at a glance; past days are reviewable, future days are a locked
+  preview until the current day is finished, unless that lock is turned off in Program
+  rules.
+- **Program rules editor** (Settings → Program rules) — weeks, days per week, circuits per
+  week, warm-up/stretch toggles, whether they count toward totals, whether future days are
+  locked, the day-rollover hour, and display units. Edits save to a *draft* and only affect
+  a running cycle once explicitly applied, with a preview of the impact (days reopened,
+  completions orphaned) shown first.
+- **Library & exercise catalog editor** — every exercise, searchable by name or muscle
+  group, each with instructions, target, and a form-video link. Add, edit, reorder, archive
+  and restore exercises; archiving keeps an exercise's history readable without it staying
+  in the rotation. Program-slot exercises drive the *draft* rules' circuit size live; a
+  running cycle keeps the composition it was snapshotted with until rules are applied.
+- **Progress** — streak, cycle completion %, a heat map of the whole cycle, and a
+  "most done" ranking.
+- **Body measurements** (Progress / Settings → Body measurements) — log a whole measuring
+  session at once against a catalog of 17 default metrics (or your own custom ones), see
+  per-metric history with a trend sparkline, and derived stats (BMI, waist-to-hip,
+  waist-to-height, lean mass). Values are always stored in kilograms/centimetres/percent;
+  the unit toggle only affects display.
+- **Cycle completion** — a summary screen once every day is settled, with the option to
+  start a fresh cycle without losing history.
+- **Settings** — guided/checklist default, timer auto-advance, keep-screen-on, sound
+  cues, haptics, JSON export of all training history, and a reset for the current cycle
+  (past cycles are never touched).
 
 ## Requirements
 
 - Android Studio (a recent version that bundles JDK 21, e.g. Narwhal or newer)
 - JDK 21 (used as the Gradle toolchain; app code targets Java 17 bytecode)
-- Android SDK Platform 37 installed (compileSdk / targetSdk = 37)
+- Android SDK Platform 37 installed (compileSdk / targetSdk = 37, minSdk = 26)
 
 ## Getting started
 
@@ -47,17 +64,21 @@ load, and body measurements alongside the original checkbox-based completion tra
 ./gradlew assembleDebug
 ```
 
-Run unit tests:
+Run unit tests (pure domain logic, no Android dependency):
 
 ```bash
-./gradlew test
+./gradlew testDebugUnitTest
 ```
 
-Run instrumented tests (needs a connected device/emulator):
+Run instrumented tests (Room migrations + repository behavior; needs a connected
+device/emulator):
 
 ```bash
-./gradlew connectedAndroidTest
+./gradlew connectedDebugAndroidTest
 ```
+
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#testing) for what each suite actually
+guards and why.
 
 ## Tech stack
 
@@ -89,6 +110,9 @@ See the numbered `INVARIANT n` comments throughout `data/db/`, `data/entity/Enti
 
 - **No Compose icon library is available** on this BOM — icons are drawn as local vector drawables in `app/src/main/res/drawable/ic_*.xml` instead of `androidx.compose.material.icons`.
 - **KSP requires `android.disallowKotlinSourceSets=false`** in `gradle.properties` (already set) because AGP 9's built-in Kotlin otherwise rejects the source sets KSP registers for Room's generated code.
+- **Avoid `rememberUpdatedState(::localFunction)`** — a callable reference to a local
+  function compares equal across recompositions, so the backing state silently never
+  updates. See `docs/ARCHITECTURE.md` for the bug this caused and the fix.
 
 ## Project structure
 
@@ -125,3 +149,7 @@ app/src/main/java/com/example/mytrackerapp/
     ├── components/    # Shared themed composables (buttons, rows, steppers, dialogs)
     └── theme/         # Colours, spacing, typography
 ```
+
+For the data model, the six correctness invariants the app relies on, the design
+system, and a record of bugs found during end-to-end testing, see
+[`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

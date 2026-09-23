@@ -67,11 +67,14 @@ object RuleImpact {
 
     /**
      * @param completionSlots one entry per completion row: (week, day, circuit).
+     * @param stretchDonePositions days whose stretch routine has been completed (INVARIANT 3's
+     *   stretch gate on [ProgramRules.isDaySettled]).
      */
     fun analyse(
         from: ProgramRules,
         to: ProgramRules,
         completionSlots: List<Triple<Int, Int, Int>>,
+        stretchDonePositions: Set<Position>,
         closedPositions: Set<Position>
     ): ApplyImpact {
         fun counts(rules: ProgramRules): Map<Position, Int> = completionSlots
@@ -83,15 +86,15 @@ object RuleImpact {
         val newCounts = counts(to)
 
         val settledBefore = from.allPositions.filter {
-            from.isDaySettled(it.week, oldCounts[it] ?: 0, it in closedPositions)
+            from.isDaySettled(it.week, oldCounts[it] ?: 0, it in stretchDonePositions, it in closedPositions)
         }.toSet()
         val settledAfter = to.allPositions.filter {
-            to.isDaySettled(it.week, newCounts[it] ?: 0, it in closedPositions)
+            to.isDaySettled(it.week, newCounts[it] ?: 0, it in stretchDonePositions, it in closedPositions)
         }.toSet()
 
-        val oldIndex = from.nextPosition(oldCounts, closedPositions)
+        val oldIndex = from.nextPosition(oldCounts, stretchDonePositions, closedPositions)
             ?.let { from.allPositions.indexOf(it) } ?: from.allPositions.size
-        val newIndex = to.nextPosition(newCounts, closedPositions)
+        val newIndex = to.nextPosition(newCounts, stretchDonePositions, closedPositions)
             ?.let { to.allPositions.indexOf(it) } ?: to.allPositions.size
 
         return ApplyImpact(
