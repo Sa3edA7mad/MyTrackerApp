@@ -36,6 +36,10 @@ object AppIcons {
     @DrawableRes val more = R.drawable.ic_more_vert
     @DrawableRes val play = R.drawable.ic_play
     @DrawableRes val refresh = R.drawable.ic_refresh
+    @DrawableRes val add = R.drawable.ic_add
+    @DrawableRes val edit = R.drawable.ic_edit
+    @DrawableRes val trash = R.drawable.ic_trash
+    @DrawableRes val measure = R.drawable.ic_measure
 }
 
 data class TopDestination(

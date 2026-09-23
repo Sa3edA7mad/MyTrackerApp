@@ -1,29 +1,44 @@
 # MyTrackerApp
 
-A native Android tracker for a personal 4-week bodyweight + resistance-band program,
-built with Jetpack Compose, Room, and Navigation Compose. Offline-only — no accounts,
-no network calls.
-
-The program: 4 weeks, 6 training days a week, the same 13 exercises every week, with the
-number of circuits per day ramping 4 → 5 → 6 → 7 across the weeks. Every day also gets a
-warm-up before the first circuit and a stretch routine after the last.
+A native Android tracker for a workout program, built with Jetpack Compose, Room, and
+Navigation Compose. Offline-only — no accounts, no network calls. The program's shape
+(weeks, days, circuit sizes, warm-up/stretch, counting and locking rules) and its exercise
+catalog are both editable in-app rather than hard-coded, and tracking goes beyond a
+checkbox: reps, load, and body measurements are all first-class.
 
 ## Features
 
 - **Today** — the current day's circuits, warm-up, and stretch, with live progress.
 - **Guided circuit mode** — one exercise at a time, with an auto-advancing hold timer
   (audio cues at 3-2-1-0, since the phone is usually out of easy reach mid-hold) for
-  timed exercises, and a two-stage side-1/side-2 flow for per-side exercises.
+  timed exercises, and a two-stage side-1/side-2 flow for per-side exercises. An exercise
+  flagged to track reps and/or load prompts for them when ticked, pre-filled from its last
+  logged set (or its weekly target/default); skipping the prompt never blocks finishing a
+  circuit, and exercises without logging enabled stay a plain single-tap checkbox.
 - **Checklist mode** — the same circuit as a flat, tickable list. Switching modes
   mid-circuit preserves progress and resumes at the right exercise either way.
-- **Program** — all 4 weeks at a glance; past days are reviewable, future days are a
-  locked preview until the current day is finished.
-- **Progress** — streak, cycle completion %, a 4×6 heat map of the whole cycle, and a
+- **Program** — all weeks at a glance; past days are reviewable, future days are a locked
+  preview until the current day is finished, unless that lock is turned off in Program
+  rules.
+- **Program rules editor** (Settings → Program rules) — weeks, days per week, circuits per
+  week, warm-up/stretch toggles, whether they count toward totals, whether future days are
+  locked, the day-rollover hour, and display units. Edits save to a *draft* and only affect
+  a running cycle once explicitly applied, with a preview of the impact (days reopened,
+  completions orphaned) shown first.
+- **Library & exercise catalog editor** — every exercise, searchable by name or muscle
+  group, each with instructions, target, and a form-video link. Add, edit, reorder, archive
+  and restore exercises; archiving keeps an exercise's history readable without it staying
+  in the rotation. Program-slot exercises drive the *draft* rules' circuit size live; a
+  running cycle keeps the composition it was snapshotted with until rules are applied.
+- **Progress** — streak, cycle completion %, a heat map of the whole cycle, and a
   "most done" ranking.
-- **Library** — all 29 exercises (13 program + 8 warm-up + 8 stretch), searchable by
-  name or muscle group, each with instructions, target, and a form-video link.
-- **Cycle completion** — a summary screen once all 24 days are settled, with the option
-  to start a fresh cycle without losing history.
+- **Body measurements** (Progress / Settings → Body measurements) — log a whole measuring
+  session at once against a catalog of 17 default metrics (or your own custom ones), see
+  per-metric history with a trend sparkline, and derived stats (BMI, waist-to-hip,
+  waist-to-height, lean mass). Values are always stored in kilograms/centimetres/percent;
+  the unit toggle only affects display.
+- **Cycle completion** — a summary screen once every day is settled, with the option to
+  start a fresh cycle without losing history.
 - **Settings** — guided/checklist default, timer auto-advance, keep-screen-on, sound
   cues, haptics, JSON export of all training history, and a reset for the current cycle
   (past cycles are never touched).
@@ -49,21 +64,21 @@ warm-up before the first circuit and a stretch routine after the last.
 ./gradlew assembleDebug
 ```
 
-Run unit tests (74 tests — pure domain logic, no Android dependency):
+Run unit tests (pure domain logic, no Android dependency):
 
 ```bash
 ./gradlew testDebugUnitTest
 ```
 
-Run instrumented tests (53 tests — Room + repository behavior; needs a connected
+Run instrumented tests (Room migrations + repository behavior; needs a connected
 device/emulator):
 
 ```bash
 ./gradlew connectedDebugAndroidTest
 ```
 
-Both suites currently pass at 127/127. See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#testing)
-for what each suite actually guards and why.
+See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#testing) for what each suite actually
+guards and why.
 
 ## Tech stack
 
@@ -72,6 +87,24 @@ for what each suite actually guards and why.
 - Room 2.8.5 (via KSP) for persistence
 - Navigation Compose for screen routing
 - DataStore Preferences for settings
+
+## Program rules
+
+Every rule of the program — weeks, days per week, circuit sizes, warm-up/stretch, counting and
+locking — lives in `domain/ProgramRules.kt` as one immutable value, not as scattered constants.
+Two invariants make editing safe:
+
+- **Rules are snapshotted per cycle** (`cycle_rules` table). Editing the rules writes a new
+  *draft* (`program_rules` table); a cycle already in progress keeps reading the rules it was
+  started under until you explicitly apply the draft to it. This is what keeps a finished cycle's
+  percentage meaning the same thing tomorrow as it did the day it was earned.
+- **Rule edits never delete completion history.** A completion that falls outside the new rules
+  (e.g. a circuit shrinks below where it was ticked) is *orphaned* — kept in the database, excluded
+  from totals — never deleted. `RuleImpact.analyse` reports how many rows this affects before you
+  confirm the change.
+
+See the numbered `INVARIANT n` comments throughout `data/db/`, `data/entity/Entities.kt` and
+`domain/` for the full set (nine in total) and where each one is enforced.
 
 ## Known toolchain quirks
 
@@ -85,11 +118,36 @@ for what each suite actually guards and why.
 
 ```
 app/src/main/java/com/example/mytrackerapp/
-├── data/        # Room database, DAOs, entities, DataStore-backed settings, seed data
-├── di/          # Simple manual dependency container
-├── domain/      # Program/model logic independent of Android framework
-├── repo/        # Repository layer bridging data and UI
-└── ui/          # Compose screens, navigation, theme, shared components
+├── data/
+│   ├── db/        # Room database, DAOs, versioned migrations (currently v1-v5)
+│   ├── entity/     # Table entities, incl. program_rules/cycle_rules and metrics/measurements
+│   ├── prefs/      # DataStore-backed settings
+│   └── seed/       # Default exercise catalog + metric catalog seed rows
+├── di/            # Simple manual dependency container (AppContainer)
+├── domain/        # Program/model logic independent of Android framework
+│   ├── ProgramRules.kt        # the program's rules as one immutable value
+│   ├── RuleValidation.kt      # rule validation + apply-impact analysis
+│   ├── CatalogValidation.kt   # exercise-draft validation
+│   ├── PerformanceStats.kt    # best load/reps, volume, trend from set logs
+│   ├── BodyStats.kt           # BMI, waist-to-hip/height, lean mass, metric trends
+│   ├── Units.kt                # kg/lb, cm/in display conversion
+│   └── model/                  # Exercise/CircuitView/DayState/... UI-facing models
+├── repo/          # Repository layer bridging data and UI
+│   ├── TrackerRepository.kt     # program/circuit/completion reads and writes
+│   ├── RulesRepository.kt       # draft + per-cycle rule snapshots, apply/preview
+│   ├── CatalogRepository.kt     # exercise CRUD, archive/restore, reorder
+│   └── MeasurementRepository.kt # metric catalog + measurement CRUD
+└── ui/
+    ├── screens/
+    │   ├── today/, program/, progress/, library/   # the four tabbed screens
+    │   ├── circuit/, routine/                        # guided/checklist training flow
+    │   ├── rules/                                     # program rules editor
+    │   ├── catalog/                                   # exercise add/edit/archive
+    │   ├── exercise/                                   # exercise detail + performance
+    │   ├── measure/                                    # measurements list, history, metric catalog
+    │   ├── settings/, complete/
+    ├── components/    # Shared themed composables (buttons, rows, steppers, dialogs)
+    └── theme/         # Colours, spacing, typography
 ```
 
 For the data model, the six correctness invariants the app relies on, the design

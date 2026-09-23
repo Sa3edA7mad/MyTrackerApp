@@ -7,8 +7,7 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.SeedCallback
 import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
-import com.example.mytrackerapp.domain.circuitsForWeek
+import com.example.mytrackerapp.domain.ProgramRules
 import com.example.mytrackerapp.domain.model.CycleStats
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.domain.model.WeekState
@@ -26,6 +25,8 @@ import java.time.LocalDate
 @RunWith(AndroidJUnit4::class)
 class ProgramStatsRepositoryTest {
 
+    private val rules = ProgramRules.DEFAULT
+
     private lateinit var db: AppDatabase
     private lateinit var repo: TrackerRepository
     private val today = LocalDate.of(2026, 9, 16)
@@ -36,8 +37,11 @@ class ProgramStatsRepositoryTest {
         db = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java)
             .addCallback(SeedCallback)
             .build()
+        val rulesRepo = RulesRepository(
+            db.rulesDao(), db.exerciseDao(), db.dayDao(), db.completionDao()
+        )
         repo = TrackerRepository(
-            db.exerciseDao(), db.cycleDao(), db.dayDao(), db.completionDao()
+            db.exerciseDao(), db.cycleDao(), db.dayDao(), db.completionDao(), rulesRepo
         )
     }
 
@@ -59,7 +63,7 @@ class ProgramStatsRepositoryTest {
     private suspend fun completeCircuit(week: Int, day: Int, circuit: Int) {
         val main = db.exerciseDao().getByCategory("BODYWEIGHT") +
                 db.exerciseDao().getByCategory("BAND")
-        assertEquals(EXERCISES_PER_CIRCUIT, main.size)
+        assertEquals(rules.exercisesPerCircuit, main.size)
         main.forEach { repo.setExerciseDone(week, day, circuit, it.id, true) }
     }
 
@@ -68,7 +72,7 @@ class ProgramStatsRepositoryTest {
      * (INVARIANT 3) — completing circuits alone leaves the day permanently open.
      */
     private suspend fun completeDay(week: Int, day: Int) {
-        (1..circuitsForWeek(week)).forEach { completeCircuit(week, day, it) }
+        (1..rules.circuitsForWeek(week)).forEach { completeCircuit(week, day, it) }
         val stretches = db.exerciseDao().getByCategory("STRETCH")
         stretches.forEach { repo.setRoutineExerciseDone(CIRCUIT_STRETCH, it.id, true) }
         repo.markRoutineDone(CIRCUIT_STRETCH)

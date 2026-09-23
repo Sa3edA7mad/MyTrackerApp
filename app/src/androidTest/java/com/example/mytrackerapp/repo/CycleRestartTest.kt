@@ -6,7 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.SeedCallback
-import com.example.mytrackerapp.domain.ALL_POSITIONS
+import com.example.mytrackerapp.domain.ProgramRules
 import com.example.mytrackerapp.domain.model.TodayView
 import com.example.mytrackerapp.domain.model.UiState
 import kotlinx.coroutines.flow.first
@@ -32,8 +32,11 @@ class CycleRestartTest {
         db = Room.inMemoryDatabaseBuilder(ctx, AppDatabase::class.java)
             .addCallback(SeedCallback)
             .build()
+        val rulesRepo = RulesRepository(
+            db.rulesDao(), db.exerciseDao(), db.dayDao(), db.completionDao()
+        )
         repo = TrackerRepository(
-            db.exerciseDao(), db.cycleDao(), db.dayDao(), db.completionDao()
+            db.exerciseDao(), db.cycleDao(), db.dayDao(), db.completionDao(), rulesRepo
         )
     }
 
@@ -47,7 +50,7 @@ class CycleRestartTest {
 
     /** Cheapest route to a finished cycle: close all 24 days early. */
     private suspend fun closeWholeCycle() {
-        ALL_POSITIONS.forEach { repo.closeDayEarly(it.week, it.day) }
+        ProgramRules.DEFAULT.allPositions.forEach { repo.closeDayEarly(it.week, it.day) }
     }
 
     @Test

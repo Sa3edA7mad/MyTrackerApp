@@ -37,6 +37,12 @@ android {
     buildFeatures {
         compose = true
     }
+    // MigrationTestHelper reads the exported schema JSONs as an androidTest asset.
+    sourceSets {
+        getByName("androidTest") {
+            assets.srcDirs("$projectDir/schemas")
+        }
+    }
 }
 
 kotlin {
@@ -47,6 +53,24 @@ kotlin {
 
 ksp {
     arg("room.schemaLocation", "$projectDir/schemas")
+}
+
+// androidx.savedstate (pulled in transitively via Compose/activity) declares kotlinx
+// serialization strictly at 1.7.3, which shadows the newer version androidx.room:room-migration
+// (used by MigrationTestHelper) actually needs — its precompiled bundle-parsing serializers
+// were built against a newer kotlinx.serialization.internal.GeneratedSerializer that added an
+// abstract method, so resolving down to 1.7.3 fails at runtime with AbstractMethodError rather
+// than at build time. Forcing the newer version for androidTest configs only fixes
+// MigrationTestHelper without touching the app's own runtime classpath.
+configurations.matching { it.name.contains("AndroidTest") }.configureEach {
+    resolutionStrategy {
+        force(
+            "org.jetbrains.kotlinx:kotlinx-serialization-core:1.8.1",
+            "org.jetbrains.kotlinx:kotlinx-serialization-core-jvm:1.8.1",
+            "org.jetbrains.kotlinx:kotlinx-serialization-json:1.8.1",
+            "org.jetbrains.kotlinx:kotlinx-serialization-json-jvm:1.8.1"
+        )
+    }
 }
 
 dependencies {
@@ -75,6 +99,8 @@ dependencies {
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.room.testing)
     androidTestImplementation(libs.kotlinx.coroutines.test)
+    androidTestImplementation(libs.kotlinx.serialization.core)
+    androidTestImplementation(libs.kotlinx.serialization.json)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
     debugImplementation(libs.androidx.compose.ui.tooling)
 }

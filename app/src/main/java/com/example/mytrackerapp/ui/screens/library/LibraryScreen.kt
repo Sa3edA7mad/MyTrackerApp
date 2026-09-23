@@ -3,6 +3,7 @@ package com.example.mytrackerapp.ui.screens.library
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,12 +14,15 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.draw.clip
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
@@ -26,8 +30,14 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
@@ -41,7 +51,9 @@ import androidx.lifecycle.viewmodel.viewModelFactory
 import com.example.mytrackerapp.TrackerApplication
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.Exercise
-import com.example.mytrackerapp.repo.TrackerRepository
+import com.example.mytrackerapp.domain.model.ExerciseSlot
+import com.example.mytrackerapp.repo.CatalogRepository
+import com.example.mytrackerapp.ui.components.AppIcons
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.components.SectionHeader
 import com.example.mytrackerapp.ui.components.TargetBadge
@@ -51,6 +63,7 @@ import com.example.mytrackerapp.ui.theme.Accent
 import com.example.mytrackerapp.ui.theme.Canvas as CanvasColor
 import com.example.mytrackerapp.ui.theme.MinTouchTarget
 import com.example.mytrackerapp.ui.theme.MyTrackerAppTheme
+import com.example.mytrackerapp.ui.theme.OnAccent
 import com.example.mytrackerapp.ui.theme.Outline
 import com.example.mytrackerapp.ui.theme.OutlineStrong
 import com.example.mytrackerapp.ui.theme.Radius
@@ -74,18 +87,36 @@ fun filterCatalog(catalog: List<Exercise>, query: String): List<Exercise> {
     }
 }
 
-class LibraryViewModel(repo: TrackerRepository) : ViewModel() {
+/** All / Program / Warm-up / Stretch / Archived, shown as a chip row above the catalog. */
+enum class LibraryFilter { ALL, PROGRAM, WARMUP, STRETCH, ARCHIVED }
+
+private fun applyFilter(catalog: List<Exercise>, filter: LibraryFilter): List<Exercise> = when (filter) {
+    LibraryFilter.ALL -> catalog.filter { !it.isArchived }
+    LibraryFilter.PROGRAM -> catalog.filter { !it.isArchived && it.slot == ExerciseSlot.PROGRAM }
+    LibraryFilter.WARMUP -> catalog.filter { !it.isArchived && it.slot == ExerciseSlot.WARMUP }
+    LibraryFilter.STRETCH -> catalog.filter { !it.isArchived && it.slot == ExerciseSlot.STRETCH }
+    LibraryFilter.ARCHIVED -> catalog.filter { it.isArchived }
+}
+
+class LibraryViewModel(private val catalog: CatalogRepository) : ViewModel() {
 
     private val _query = MutableStateFlow("")
     val query: StateFlow<String> = _query.asStateFlow()
 
+    private val _filter = MutableStateFlow(LibraryFilter.ALL)
+    val filter: StateFlow<LibraryFilter> = _filter.asStateFlow()
+
     val results: StateFlow<List<Exercise>?> =
-        combine(repo.observeCatalog(), _query) { catalog, q ->
-            if (catalog.isEmpty()) null else filterCatalog(catalog, q)
+        combine(catalog.observeAll(includeArchived = true), _query, _filter) { all, q, f ->
+            if (all.isEmpty()) null else filterCatalog(applyFilter(all, f), q)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
     fun onQueryChange(value: String) {
         _query.value = value
+    }
+
+    fun onFilterChange(value: LibraryFilter) {
+        _filter.value = value
     }
 
     companion object {
@@ -93,7 +124,7 @@ class LibraryViewModel(repo: TrackerRepository) : ViewModel() {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                LibraryViewModel(app.container.repo)
+                LibraryViewModel(app.container.catalog)
             }
         }
     }
@@ -102,10 +133,12 @@ class LibraryViewModel(repo: TrackerRepository) : ViewModel() {
 @Composable
 fun LibraryRoute(
     onOpenExercise: (String) -> Unit,
+    onAddExercise: () -> Unit,
     viewModel: LibraryViewModel = viewModel(factory = LibraryViewModel.Factory)
 ) {
     val results by viewModel.results.collectAsState()
     val query by viewModel.query.collectAsState()
+    val filter by viewModel.filter.collectAsState()
 
     val list = results
     if (list == null) {
@@ -114,8 +147,11 @@ fun LibraryRoute(
         LibraryScreen(
             exercises = list,
             query = query,
+            filter = filter,
             onQueryChange = viewModel::onQueryChange,
-            onOpenExercise = onOpenExercise
+            onFilterChange = viewModel::onFilterChange,
+            onOpenExercise = onOpenExercise,
+            onAddExercise = onAddExercise
         )
     }
 }
@@ -124,8 +160,11 @@ fun LibraryRoute(
 fun LibraryScreen(
     exercises: List<Exercise>,
     query: String,
+    filter: LibraryFilter,
     onQueryChange: (String) -> Unit,
-    onOpenExercise: (String) -> Unit
+    onFilterChange: (LibraryFilter) -> Unit,
+    onOpenExercise: (String) -> Unit,
+    onAddExercise: () -> Unit
 ) {
     val grouped = exercises.groupBy { it.category }
     val order = listOf(Category.BODYWEIGHT, Category.BAND, Category.WARMUP, Category.STRETCH)
@@ -133,13 +172,31 @@ fun LibraryScreen(
     Column(Modifier.fillMaxSize().background(CanvasColor)) {
         Column(Modifier.padding(horizontal = Spacing.lg)) {
             Spacer(Modifier.height(Spacing.sm))
-            Text("Library", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
-            Text(
-                "All 29 moves from your program",
-                style = MaterialTheme.typography.bodyMedium,
-                color = TextTertiary
-            )
-            Spacer(Modifier.height(Spacing.md))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    Text("Library", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+                    Text(
+                        "${exercises.size} move${if (exercises.size == 1) "" else "s"}",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = TextTertiary
+                    )
+                }
+                Box(
+                    Modifier
+                        .size(MinTouchTarget)
+                        .clip(RoundedCornerShape(Radius.pill))
+                        .clickable(role = Role.Button, onClick = onAddExercise),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        painterResource(AppIcons.add),
+                        contentDescription = "Add exercise",
+                        tint = Accent,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
+            }
+            Spacer(Modifier.height(Spacing.sm))
             OutlinedTextField(
                 value = query,
                 onValueChange = onQueryChange,
@@ -165,12 +222,14 @@ fun LibraryScreen(
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(Modifier.height(Spacing.sm))
+            FilterChipRow(filter, onFilterChange)
+            Spacer(Modifier.height(Spacing.sm))
         }
 
         if (exercises.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(Spacing.lg), contentAlignment = Alignment.TopCenter) {
                 Text(
-                    "No exercise matches “${query.trim()}”.",
+                    if (query.isBlank()) "Nothing here yet." else "No exercise matches “${query.trim()}”.",
                     style = MaterialTheme.typography.bodyLarge,
                     color = TextSecondary
                 )
@@ -192,6 +251,41 @@ fun LibraryScreen(
                     }
                 }
                 item { Spacer(Modifier.height(Spacing.xxl)) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun FilterChipRow(selected: LibraryFilter, onSelect: (LibraryFilter) -> Unit) {
+    val labels = mapOf(
+        LibraryFilter.ALL to "All",
+        LibraryFilter.PROGRAM to "Program",
+        LibraryFilter.WARMUP to "Warm-up",
+        LibraryFilter.STRETCH to "Stretch",
+        LibraryFilter.ARCHIVED to "Archived"
+    )
+    Row(
+        Modifier.horizontalScroll(rememberScrollState()),
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+    ) {
+        LibraryFilter.entries.forEach { f ->
+            val isSelected = f == selected
+            Box(
+                Modifier
+                    .heightIn(min = MinTouchTarget)
+                    .clip(RoundedCornerShape(Radius.pill))
+                    .background(if (isSelected) Accent else Color.Transparent)
+                    .border(1.dp, if (isSelected) Accent else Outline, RoundedCornerShape(Radius.pill))
+                    .clickable(role = Role.Button, onClick = { onSelect(f) })
+                    .padding(horizontal = Spacing.md),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    labels.getValue(f),
+                    style = MaterialTheme.typography.labelMedium,
+                    color = if (isSelected) OnAccent else TextSecondary
+                )
             }
         }
     }
@@ -251,8 +345,11 @@ private fun LibraryPreview() {
                 Exercise("band_row", "Band Row", Category.BAND, "Back · Biceps · Rear Delts", "", com.example.mytrackerapp.domain.model.TargetType.REPS, 10, false, "10 reps", "", 13)
             ),
             query = "",
+            filter = LibraryFilter.ALL,
             onQueryChange = {},
-            onOpenExercise = {}
+            onFilterChange = {},
+            onOpenExercise = {},
+            onAddExercise = {}
         )
     }
 }

@@ -10,8 +10,11 @@ import com.example.mytrackerapp.data.prefs.Settings
 import com.example.mytrackerapp.data.prefs.SettingsStore
 import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
 import com.example.mytrackerapp.domain.CIRCUIT_WARMUP
+import com.example.mytrackerapp.domain.UnitPrefs
 import com.example.mytrackerapp.domain.model.CircuitView
 import com.example.mytrackerapp.domain.model.UiState
+import com.example.mytrackerapp.repo.RulesRepository
+import com.example.mytrackerapp.repo.SetDetail
 import com.example.mytrackerapp.repo.TrackerRepository
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -25,6 +28,7 @@ import kotlinx.coroutines.launch
 class CircuitViewModel(
     private val repo: TrackerRepository,
     private val settingsStore: SettingsStore,
+    private val rulesRepo: RulesRepository,
     private val week: Int,
     private val day: Int,
     private val circuit: Int
@@ -36,9 +40,15 @@ class CircuitViewModel(
     val settings: StateFlow<Settings> = settingsStore.settings
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), Settings())
 
-    fun setDone(exerciseId: String, done: Boolean) {
-        viewModelScope.launch { repo.setExerciseDone(week, day, circuit, exerciseId, done) }
+    val unitPrefs: StateFlow<UnitPrefs> = rulesRepo.observeUnits()
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitPrefs())
+
+    fun setDone(exerciseId: String, done: Boolean, detail: SetDetail? = null) {
+        viewModelScope.launch { repo.setExerciseDone(week, day, circuit, exerciseId, done, detail) }
     }
+
+    /** Pre-fill source for the log sheet — the most recently logged detail for this exercise. */
+    suspend fun lastDetail(exerciseId: String): SetDetail? = repo.lastDetailFor(exerciseId)
 
     /** Switching mode mid-circuit also becomes the new global default. */
     fun setGuidedMode(guided: Boolean) {
@@ -65,6 +75,7 @@ class CircuitViewModel(
                     CircuitViewModel(
                         repo = app.container.repo,
                         settingsStore = app.container.settings,
+                        rulesRepo = app.container.rules,
                         week = week,
                         day = day,
                         circuit = circuit

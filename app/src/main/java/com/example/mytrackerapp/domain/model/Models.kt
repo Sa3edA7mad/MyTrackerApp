@@ -1,10 +1,11 @@
 package com.example.mytrackerapp.domain.model
 
-import com.example.mytrackerapp.domain.EXERCISES_PER_CIRCUIT
-
 enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH }
 
 enum class TargetType { REPS, SECONDS }
+
+/** Decides circuit membership. Distinct from [Category], which is only the display badge. */
+enum class ExerciseSlot { PROGRAM, WARMUP, STRETCH }
 
 data class Exercise(
     val id: String,
@@ -17,12 +18,27 @@ data class Exercise(
     val perSide: Boolean,
     val targetLabel: String,
     val videoUrl: String,
-    val sortOrder: Int
-)
+    val sortOrder: Int,
+    val slot: ExerciseSlot = ExerciseSlot.PROGRAM,
+    val enabled: Boolean = true,
+    val archivedAt: Long? = null,
+    val isCustom: Boolean = false,
+    val tracksReps: Boolean = false,
+    val tracksLoad: Boolean = false,
+    val defaultLoadKg: Double? = null,
+    val defaultBandLevel: String? = null,
+    val progressionStep: Int = 0
+) {
+    val isArchived: Boolean get() = archivedAt != null
+}
 
-/** How far through one circuit of 13 the user is. */
-data class CircuitProgress(val index: Int, val done: Int) {
-    val isComplete: Boolean get() = done >= EXERCISES_PER_CIRCUIT
+/** Week w targets targetValue + progressionStep * (w - 1). progressionStep = 0 is the
+ *  original fixed-target behaviour. */
+fun Exercise.targetForWeek(week: Int): Int = targetValue + progressionStep * (week - 1)
+
+/** How far through one circuit the user is. [total] is the circuit's own exercise count. */
+data class CircuitProgress(val index: Int, val done: Int, val total: Int) {
+    val isComplete: Boolean get() = done >= total
     val isStarted: Boolean get() = done > 0
 }
 
@@ -36,12 +52,13 @@ data class DayState(
     val circuits: List<CircuitProgress>,
     val warmUpDone: Boolean,
     val stretchDone: Boolean,
-    val closed: Boolean
+    val closed: Boolean,
+    val exercisesPerCircuit: Int
 ) {
     val circuitsTotal: Int get() = circuits.size
     val circuitsDone: Int get() = circuits.count { it.isComplete }
     val exercisesDone: Int get() = circuits.sumOf { it.done }
-    val exercisesTotal: Int get() = circuits.size * EXERCISES_PER_CIRCUIT
+    val exercisesTotal: Int get() = circuits.sumOf { it.total }
     val exercisesLeft: Int get() = (exercisesTotal - exercisesDone).coerceAtLeast(0)
 
     /** First incomplete circuit, or null when every circuit of the day is done. */
@@ -92,10 +109,14 @@ data class WeekState(
     val week: Int,
     val circuitsPerDay: Int,
     val days: List<DaySummary>,
-    val isCurrent: Boolean
+    val isCurrent: Boolean,
+    val exercisesPerCircuit: Int
 ) {
     val circuitsTotal: Int get() = circuitsPerDay * days.size
-    val circuitsDone: Int get() = days.sumOf { it.done / EXERCISES_PER_CIRCUIT }
+
+    /** Counts complete circuits directly rather than dividing, so this stays correct even
+     *  when circuits carry different sizes. Requires [DaySummary.circuits] to be populated. */
+    val circuitsDone: Int get() = days.sumOf { day -> day.circuits.count { it.isComplete } }
     val exercisesDone: Int get() = days.sumOf { it.done }
     val exercisesTotal: Int get() = days.sumOf { it.total }
 }

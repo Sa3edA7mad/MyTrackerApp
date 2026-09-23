@@ -6,14 +6,14 @@ import androidx.room.Index
 import androidx.room.PrimaryKey
 
 /**
- * Static catalog: 13 program exercises + 8 warm-up moves + 8 stretches = 29 rows.
- * Seeded once on database create and never mutated at runtime.
+ * The exercise catalog. Seeded with 13 program exercises + 8 warm-up moves + 8 stretches
+ * on database create; editable at runtime from T14 onward (create/update/archive/reorder).
  */
 @Entity(tableName = "exercises")
 data class ExerciseEntity(
     @PrimaryKey val id: String,
     val name: String,
-    /** BODYWEIGHT | BAND | WARMUP | STRETCH */
+    /** BODYWEIGHT | BAND | WARMUP | STRETCH — the display badge only. */
     val category: String,
     /** "Legs · Glutes · Core"; empty for warm-up moves, which the sheet leaves blank. */
     val muscles: String,
@@ -27,7 +27,22 @@ data class ExerciseEntity(
     /** Verbatim from the sheet, e.g. "10 reps each side". Display only. */
     val targetLabel: String,
     val videoUrl: String,
-    val sortOrder: Int
+    val sortOrder: Int,
+    /** PROGRAM | WARMUP | STRETCH. Decides circuit membership — see TrackerRepository. */
+    val slot: String = "PROGRAM",
+    /** In the rotation or benched, without archiving. */
+    val enabled: Boolean = true,
+    /** Soft delete (INVARIANT 8's catalog equivalent). Archived rows never appear in a
+     *  circuit or the Library, but their completion history stays readable. */
+    val archivedAt: Long? = null,
+    /** User-created. "Restore default catalog" re-seeds the originals and leaves these alone. */
+    val isCustom: Boolean = false,
+    val tracksReps: Boolean = false,
+    val tracksLoad: Boolean = false,
+    val defaultLoadKg: Double? = null,
+    val defaultBandLevel: String? = null,
+    /** Added to targetValue per week: week w targets targetValue + progressionStep * (w-1). */
+    val progressionStep: Int = 0
 )
 
 @Entity(tableName = "cycles")
@@ -97,5 +112,108 @@ data class CompletionEntity(
     /** >= 1 program circuit | 0 warm-up | -1 stretch. See INVARIANT 2. */
     val circuit: Int,
     val exerciseId: String,
-    val completedAt: Long
+    val completedAt: Long,
+    /**
+     * Optional set detail. All nullable and never backfilled (INVARIANT 5 stays load-bearing:
+     * every aggregate is a `COUNT(*)` and must keep working whether or not these are set).
+     * NULL means "not logged", which is the honest value for every row recorded before this
+     * feature existed and for any set where logging is off or skipped.
+     */
+    val reps: Int? = null,
+    /** Always kilograms — the unit setting converts only at display (see domain/Units.kt). */
+    val loadKg: Double? = null,
+    val bandLevel: String? = null,
+    val holdSeconds: Int? = null,
+    /** 1-10 perceived effort. */
+    val rpe: Int? = null,
+    val note: String? = null
+)
+
+/**
+ * The single editable rule set, id is always 1. This is the *draft/default*: a running cycle
+ * reads its own [CycleRulesEntity] snapshot instead (INVARIANT 7).
+ */
+@Entity(tableName = "program_rules")
+data class ProgramRulesEntity(
+    @PrimaryKey val id: Int = 1,
+    val weeks: Int,
+    val daysPerWeek: Int,
+    /** Comma-separated, one entry per week, e.g. "4,5,6,7". */
+    val circuitsPerWeekCsv: String,
+    val dayRolloverHour: Int,
+    val warmUpEnabled: Boolean,
+    val stretchEnabled: Boolean,
+    val countRoutinesInTotals: Boolean,
+    val lockFutureDays: Boolean,
+    /** KG | LB — display only; loads are always stored in kilograms. */
+    val weightUnit: String,
+    /** CM | IN — display only; girths are always stored in centimetres. */
+    val lengthUnit: String,
+    val updatedAt: Long
+)
+
+/**
+ * INVARIANT 7: the rules a cycle started under, frozen. Reads for that cycle use this row.
+ *
+ * [programExerciseIdsCsv] freezes the circuit's composition too, so archiving an exercise
+ * mid-cycle cannot retroactively change what a completed circuit meant.
+ */
+@Entity(
+    tableName = "cycle_rules",
+    foreignKeys = [
+        ForeignKey(
+            entity = CycleEntity::class,
+            parentColumns = ["id"],
+            childColumns = ["cycleId"],
+            onDelete = ForeignKey.CASCADE
+        )
+    ]
+)
+data class CycleRulesEntity(
+    @PrimaryKey val cycleId: Long,
+    val weeks: Int,
+    val daysPerWeek: Int,
+    val circuitsPerWeekCsv: String,
+    val exercisesPerCircuit: Int,
+    val warmUpCount: Int,
+    val stretchCount: Int,
+    val dayRolloverHour: Int,
+    val warmUpEnabled: Boolean,
+    val stretchEnabled: Boolean,
+    val countRoutinesInTotals: Boolean,
+    val lockFutureDays: Boolean,
+    /** Ordered exercise ids that made up a circuit when this snapshot was taken. */
+    val programExerciseIdsCsv: String,
+    val snapshotAt: Long
+)
+
+/** The metric catalog is itself an editable rule: enable, disable, rename, add your own. */
+@Entity(tableName = "metrics")
+data class MetricEntity(
+    @PrimaryKey val id: String,
+    val name: String,
+    /** WEIGHT (kg) | LENGTH (cm) | PERCENT | COUNT */
+    val kind: String,
+    val hint: String,
+    val enabled: Boolean,
+    val isCustom: Boolean,
+    val decimals: Int,
+    val sortOrder: Int,
+    val archivedAt: Long? = null
+)
+
+@Entity(
+    tableName = "measurements",
+    indices = [
+        Index(value = ["metricId", "takenAt"], unique = true),
+        Index(value = ["takenAt"])
+    ]
+)
+data class MeasurementEntity(
+    @PrimaryKey(autoGenerate = true) val id: Long = 0,
+    val metricId: String,
+    /** Canonical: kilograms for WEIGHT, centimetres for LENGTH, percent for PERCENT. */
+    val value: Double,
+    val takenAt: Long,
+    val note: String = ""
 )

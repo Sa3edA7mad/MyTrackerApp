@@ -6,8 +6,12 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import com.example.mytrackerapp.data.entity.CompletionEntity
 import com.example.mytrackerapp.data.entity.CycleEntity
+import com.example.mytrackerapp.data.entity.CycleRulesEntity
 import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
+import com.example.mytrackerapp.data.entity.MeasurementEntity
+import com.example.mytrackerapp.data.entity.MetricEntity
+import com.example.mytrackerapp.data.entity.ProgramRulesEntity
 import kotlinx.coroutines.flow.Flow
 
 /* --------------------------------------------------------------- projections */
@@ -41,8 +45,39 @@ interface ExerciseDao {
     @Query("SELECT COUNT(*) FROM exercises")
     suspend fun count(): Int
 
+    /** Not archived — what the Library and any circuit should ever show. */
+    @Query("SELECT * FROM exercises WHERE archivedAt IS NULL ORDER BY sortOrder")
+    fun observeActive(): Flow<List<ExerciseEntity>>
+
+    @Query("SELECT * FROM exercises WHERE archivedAt IS NULL ORDER BY sortOrder")
+    suspend fun getActive(): List<ExerciseEntity>
+
+    @Query("SELECT * FROM exercises WHERE slot = :slot AND archivedAt IS NULL ORDER BY sortOrder")
+    fun observeBySlot(slot: String): Flow<List<ExerciseEntity>>
+
+    /** Enabled, not archived — the count that decides `exercisesPerCircuit`/warm-up/stretch counts. */
+    @Query(
+        "SELECT COUNT(*) FROM exercises WHERE slot = :slot AND enabled = 1 AND archivedAt IS NULL"
+    )
+    suspend fun countBySlot(slot: String): Int
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertAll(items: List<ExerciseEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(exercise: ExerciseEntity)
+
+    @Query("UPDATE exercises SET archivedAt = :ts WHERE id = :id")
+    suspend fun archive(id: String, ts: Long)
+
+    @Query("UPDATE exercises SET archivedAt = NULL WHERE id = :id")
+    suspend fun restore(id: String)
+
+    @Query("UPDATE exercises SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
+    @Query("UPDATE exercises SET sortOrder = :sortOrder WHERE id = :id")
+    suspend fun setSortOrder(id: String, sortOrder: Int)
 }
 
 @Dao
@@ -109,11 +144,12 @@ interface DayDao {
 }
 
 /**
- * INVARIANT 2: every aggregate here filters `circuit >= 1`.
+ * INVARIANT 2: every aggregate here filters `circuit >= 1` unless [includeRoutines] is set.
  *
  * Warm-up (circuit 0) and stretch (circuit -1) completions are stored so a half-done
- * routine resumes, but they must never enter a day, week, or cycle total. Adding a
- * query without that filter will silently inflate every number in the app.
+ * routine resumes. Whether they enter a day/week/cycle total is now a rule
+ * (`ProgramRules.countRoutinesInTotals`), not a law — every aggregate query below still
+ * takes an explicit flag so nothing can silently forget to check it.
  */
 @Dao
 interface CompletionDao {
@@ -131,24 +167,24 @@ interface CompletionDao {
 
     @Query(
         """SELECT week, day, circuit, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY week, day, circuit"""
     )
-    fun observeCircuitCounts(cycleId: Long): Flow<List<CircuitCount>>
+    fun observeCircuitCounts(cycleId: Long, includeRoutines: Boolean = false): Flow<List<CircuitCount>>
 
     @Query(
         """SELECT week, day, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY week, day"""
     )
-    fun observeDayCounts(cycleId: Long): Flow<List<DayCount>>
+    fun observeDayCounts(cycleId: Long, includeRoutines: Boolean = false): Flow<List<DayCount>>
 
     @Query(
         """SELECT week, day, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY week, day"""
     )
-    suspend fun getDayCounts(cycleId: Long): List<DayCount>
+    suspend fun getDayCounts(cycleId: Long, includeRoutines: Boolean = false): List<DayCount>
 
     @Query(
         """SELECT exerciseId FROM completions
@@ -172,12 +208,17 @@ interface CompletionDao {
         circuit: Int
     ): List<String>
 
-    @Query("SELECT COUNT(*) FROM completions WHERE cycleId = :cycleId AND circuit >= 1")
-    fun observeTotalDone(cycleId: Long): Flow<Int>
+    @Query(
+        "SELECT COUNT(*) FROM completions WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)"
+    )
+    fun observeTotalDone(cycleId: Long, includeRoutines: Boolean = false): Flow<Int>
 
-    /** Progress screen only — can return up to 1,716 rows. Never call this from Today. */
-    @Query("SELECT completedAt FROM completions WHERE cycleId = :cycleId AND circuit >= 1")
-    fun observeCompletionTimes(cycleId: Long): Flow<List<Long>>
+    /** Progress screen only — can return up to a full cycle's worth of rows. Never call this from Today. */
+    @Query(
+        """SELECT completedAt FROM completions
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)"""
+    )
+    fun observeCompletionTimes(cycleId: Long, includeRoutines: Boolean = false): Flow<List<Long>>
 
     /**
      * Ties are broken by exerciseId rather than left to SQLite. Early in a cycle every
@@ -191,30 +232,38 @@ interface CompletionDao {
      */
     @Query(
         """SELECT exerciseId, COUNT(*) AS done FROM completions
-           WHERE cycleId = :cycleId AND circuit >= 1
+           WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
            GROUP BY exerciseId
            ORDER BY done DESC, exerciseId ASC"""
     )
-    fun observeTallies(cycleId: Long): Flow<List<ExerciseCount>>
+    fun observeTallies(cycleId: Long, includeRoutines: Boolean = false): Flow<List<ExerciseCount>>
 
     @Query(
         """SELECT COUNT(*) FROM completions
-           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND circuit >= 1"""
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND (:includeRoutines OR circuit >= 1)"""
     )
-    fun observeCountForExercise(cycleId: Long, exerciseId: String): Flow<Int>
+    fun observeCountForExercise(
+        cycleId: Long,
+        exerciseId: String,
+        includeRoutines: Boolean = false
+    ): Flow<Int>
 
     @Query(
         """SELECT completedAt FROM completions
-           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND circuit >= 1"""
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId AND (:includeRoutines OR circuit >= 1)"""
     )
-    fun observeTimesForExercise(cycleId: Long, exerciseId: String): Flow<List<Long>>
+    fun observeTimesForExercise(
+        cycleId: Long,
+        exerciseId: String,
+        includeRoutines: Boolean = false
+    ): Flow<List<Long>>
 
     /**
      * Deliberately NOT filtered by circuit — the only such query in this DAO.
      *
      * INVARIANT 2 governs program *totals*. This feeds the per-exercise history on the
      * detail screen, where a warm-up move should be able to show "done 12 times" rather
-     * than always reading zero. Warm-up/stretch ids are disjoint from the 13 program
+     * than always reading zero. Warm-up/stretch ids are disjoint from the program
      * exercises, so for a program exercise this returns exactly the same rows as
      * [observeTimesForExercise]. Never use it for a day, week, or cycle total.
      */
@@ -229,4 +278,110 @@ interface CompletionDao {
 
     @Query("SELECT * FROM completions WHERE cycleId = :cycleId")
     suspend fun getAllForCycle(cycleId: Long): List<CompletionEntity>
+
+    @Query(
+        """UPDATE completions SET reps = :reps, loadKg = :loadKg, bandLevel = :bandLevel,
+           holdSeconds = :holdSeconds, rpe = :rpe, note = :note
+           WHERE cycleId = :cycleId AND week = :week AND day = :day
+             AND circuit = :circuit AND exerciseId = :exerciseId"""
+    )
+    suspend fun updateDetail(
+        cycleId: Long,
+        week: Int,
+        day: Int,
+        circuit: Int,
+        exerciseId: String,
+        reps: Int?,
+        loadKg: Double?,
+        bandLevel: String?,
+        holdSeconds: Int?,
+        rpe: Int?,
+        note: String?
+    )
+
+    /** Most recent logged detail for an exercise — used to pre-fill the next set's sheet. */
+    @Query(
+        """SELECT * FROM completions
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId
+             AND (reps IS NOT NULL OR loadKg IS NOT NULL OR holdSeconds IS NOT NULL)
+           ORDER BY completedAt DESC LIMIT 1"""
+    )
+    suspend fun getLastDetail(cycleId: Long, exerciseId: String): CompletionEntity?
+
+    /** Every set of this exercise this cycle, logged or not — feeds [summarise]. */
+    @Query(
+        """SELECT * FROM completions
+           WHERE cycleId = :cycleId AND exerciseId = :exerciseId
+           ORDER BY completedAt ASC"""
+    )
+    fun observeSetLogs(cycleId: Long, exerciseId: String): Flow<List<CompletionEntity>>
+}
+
+@Dao
+interface RulesDao {
+
+    @Query("SELECT * FROM program_rules WHERE id = 1")
+    fun observeRules(): Flow<ProgramRulesEntity?>
+
+    @Query("SELECT * FROM program_rules WHERE id = 1")
+    suspend fun getRules(): ProgramRulesEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(rules: ProgramRulesEntity)
+
+    @Query("SELECT * FROM cycle_rules WHERE cycleId = :cycleId")
+    suspend fun getCycleRules(cycleId: Long): CycleRulesEntity?
+
+    @Query("SELECT * FROM cycle_rules WHERE cycleId = :cycleId")
+    fun observeCycleRules(cycleId: Long): Flow<CycleRulesEntity?>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsertCycleRules(rules: CycleRulesEntity)
+}
+
+@Dao
+interface MetricDao {
+
+    @Query("SELECT * FROM metrics WHERE archivedAt IS NULL ORDER BY sortOrder")
+    fun observeAll(): Flow<List<MetricEntity>>
+
+    @Query("SELECT * FROM metrics WHERE archivedAt IS NULL AND enabled = 1 ORDER BY sortOrder")
+    fun observeEnabled(): Flow<List<MetricEntity>>
+
+    @Query("SELECT * FROM metrics WHERE id = :id")
+    suspend fun getById(id: String): MetricEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insertAll(items: List<MetricEntity>)
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(metric: MetricEntity)
+
+    @Query("UPDATE metrics SET enabled = :enabled WHERE id = :id")
+    suspend fun setEnabled(id: String, enabled: Boolean)
+
+    @Query("UPDATE metrics SET archivedAt = :ts WHERE id = :id")
+    suspend fun archive(id: String, ts: Long)
+}
+
+@Dao
+interface MeasurementDao {
+
+    @Query("SELECT * FROM measurements WHERE metricId = :metricId ORDER BY takenAt ASC")
+    fun observeHistory(metricId: String): Flow<List<MeasurementEntity>>
+
+    @Query("SELECT * FROM measurements WHERE metricId = :metricId ORDER BY takenAt DESC LIMIT 1")
+    fun observeLatest(metricId: String): Flow<MeasurementEntity?>
+
+    @Query("SELECT * FROM measurements WHERE metricId = :metricId ORDER BY takenAt ASC")
+    suspend fun getHistory(metricId: String): List<MeasurementEntity>
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun insert(measurement: MeasurementEntity): Long
+
+    @Query("UPDATE measurements SET value = :value, note = :note WHERE id = :id")
+    suspend fun update(id: Long, value: Double, note: String)
+
+    @Query("DELETE FROM measurements WHERE id = :id")
+    suspend fun delete(id: Long)
 }
