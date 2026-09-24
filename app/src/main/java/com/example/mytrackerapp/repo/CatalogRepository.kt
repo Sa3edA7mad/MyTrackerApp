@@ -6,6 +6,7 @@ import com.example.mytrackerapp.data.seed.SeedData
 import com.example.mytrackerapp.domain.CatalogValidation
 import com.example.mytrackerapp.domain.ExerciseDraft
 import com.example.mytrackerapp.domain.model.Exercise
+import com.example.mytrackerapp.domain.model.ExerciseSlot
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -42,6 +43,16 @@ class CatalogRepository(private val dao: ExerciseDao) {
 
         val existing = dao.getById(id)
             ?: return@withContext Result.failure(NoSuchElementException("No exercise with id $id"))
+        // Same guard as archive/setEnabled: the editor can also take an exercise out of the
+        // program, by switching it off or moving it to another slot.
+        val leavesProgram = draft.slot != ExerciseSlot.PROGRAM || !draft.enabled
+        if (existing.slot == "PROGRAM" && existing.enabled && existing.archivedAt == null &&
+            leavesProgram && dao.countBySlot("PROGRAM") <= 1
+        ) {
+            return@withContext Result.failure(
+                IllegalStateException("At least one program exercise must stay enabled.")
+            )
+        }
         dao.upsert(
             draft.toEntity(
                 id = id,

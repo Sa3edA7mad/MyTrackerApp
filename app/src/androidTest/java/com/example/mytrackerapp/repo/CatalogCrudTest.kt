@@ -159,4 +159,19 @@ class CatalogCrudTest {
             renamed.formVideoUrl
         )
     }
+
+    @Test
+    fun theEditorCannotSwitchOffOrReslotTheLastProgramExercise() = runTest {
+        val program = db.exerciseDao().getAll().filter { it.slot == "PROGRAM" }.map { it.id }
+        program.drop(1).forEach { assertTrue(catalog.archive(it).isSuccess) }
+        val last = program.first()
+
+        val disabled = catalog.update(last, draft(name = "Last").copy(enabled = false))
+        assertTrue(disabled.isFailure)
+        val moved = catalog.update(last, draft(name = "Last", slot = ExerciseSlot.WARMUP))
+        assertTrue(moved.isFailure)
+        assertEquals(1, db.exerciseDao().countBySlot("PROGRAM"))
+
+        assertTrue("an ordinary edit still saves", catalog.update(last, draft(name = "Last")).isSuccess)
+    }
 }
