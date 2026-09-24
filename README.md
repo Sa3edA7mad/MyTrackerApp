@@ -53,11 +53,16 @@ Run unit tests:
 ./gradlew test
 ```
 
-Run instrumented tests (needs a connected device/emulator):
+Run instrumented tests (needs a connected device/emulator). This includes the end-to-end UI
+suite in `app/src/androidTest/.../e2e/`, which drives the real app screen by screen. Note that it
+uninstalls the app afterwards, wiping its data:
 
 ```bash
 ./gradlew connectedAndroidTest
 ```
+
+Every feature, its exact on-screen behaviour, and a regression checklist keyed to those tests are
+documented in [docs/FEATURES.md](docs/FEATURES.md).
 
 ## Tech stack
 
