@@ -183,6 +183,26 @@ class CatalogEditViewModel(
 
     fun validationErrors(): List<String> = CatalogValidation.validate(currentDraft())
 
+    /**
+     * The write-then-leave actions run in [viewModelScope] (main dispatcher) rather than the
+     * screen's composition scope: they outlive a recomposition or rotation, and [onDone]
+     * navigation always lands on the main thread.
+     */
+    fun save(onDone: () -> Unit, onError: (String) -> Unit) = viewModelScope.launch {
+        val result = save()
+        if (result.isSuccess) onDone() else onError(result.exceptionOrNull()?.message ?: "Could not save.")
+    }
+
+    fun archive(onDone: () -> Unit, onError: (String) -> Unit) = viewModelScope.launch {
+        val result = archive()
+        if (result.isSuccess) onDone() else onError(result.exceptionOrNull()?.message ?: "Could not archive.")
+    }
+
+    fun restore(onDone: () -> Unit) = viewModelScope.launch {
+        restore()
+        onDone()
+    }
+
     suspend fun save(): Result<String> {
         val errors = validationErrors()
         if (errors.isNotEmpty()) return Result.failure(IllegalArgumentException(errors.first()))
@@ -238,25 +258,12 @@ fun CatalogEditRoute(
         onBack = onDone,
         onChange = viewModel::update,
         onSave = {
-            scope.launch {
-                val result = viewModel.save()
-                if (result.isSuccess) onDone()
-                else scope.launch { snackbars.showSnackbar(result.exceptionOrNull()?.message ?: "Could not save.") }
-            }
+            viewModel.save(onDone) { message -> scope.launch { snackbars.showSnackbar(message) } }
         },
         onArchive = {
-            scope.launch {
-                val result = viewModel.archive()
-                if (result.isSuccess) onDone()
-                else snackbars.showSnackbar(result.exceptionOrNull()?.message ?: "Could not archive.")
-            }
+            viewModel.archive(onDone) { message -> scope.launch { snackbars.showSnackbar(message) } }
         },
-        onRestore = {
-            scope.launch {
-                viewModel.restore()
-                onDone()
-            }
-        }
+        onRestore = { viewModel.restore(onDone) }
     )
 }
 
