@@ -250,7 +250,7 @@ fun MeasureScreen(
             Text("Body measurements", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
 
             SectionHeader("Derived")
-            DerivedStatsSection(data.derived)
+            DerivedStatsSection(data.derived, data.units)
 
             SectionHeader("Metrics")
             if (data.rows.isEmpty()) {
@@ -279,7 +279,7 @@ fun MeasureScreen(
 }
 
 @Composable
-private fun DerivedStatsSection(derived: DerivedBodyStats) {
+private fun DerivedStatsSection(derived: DerivedBodyStats, units: UnitPrefs) {
     Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
         StatTile(
             derived.bmi?.let { Units.format(it, 1) } ?: "—",
@@ -287,17 +287,29 @@ private fun DerivedStatsSection(derived: DerivedBodyStats) {
             Modifier.weight(1f)
         )
         StatTile(
+            derived.leanMassKg?.let {
+                "${Units.format(Units.kgToDisplay(it, units.weight), 1)} ${units.weight.label}"
+            } ?: "—",
+            "Lean mass",
+            Modifier.weight(1f)
+        )
+    }
+    Spacer(Modifier.height(Spacing.sm))
+    Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
+        StatTile(
             derived.waistToHip?.let { Units.format(it, 2) } ?: "—",
             "Waist:hip",
             Modifier.weight(1f)
         )
         StatTile(
-            derived.leanMassKg?.let { "${Units.format(it, 1)} kg" } ?: "—",
-            "Lean mass",
+            derived.waistToHeight?.let { Units.format(it, 2) } ?: "—",
+            "Waist:height",
             Modifier.weight(1f)
         )
     }
-    if (derived.bmi == null || derived.waistToHip == null || derived.leanMassKg == null) {
+    if (derived.bmi == null || derived.waistToHip == null || derived.waistToHeight == null ||
+        derived.leanMassKg == null
+    ) {
         Spacer(Modifier.height(Spacing.xs))
         Text(
             "Log weight, height, waist, hips and body fat to fill these in.",
@@ -343,6 +355,10 @@ private fun MetricCard(row: MetricRow, onClick: () -> Unit) {
         }
     }
 }
+
+/** "Waist (cm)", or just "Resting heart rate" when the metric has no unit. */
+internal fun withUnit(label: String, unit: String): String =
+    if (unit.isBlank()) label else "$label ($unit)"
 
 private fun Double.signedString(decimals: Int): String {
     val formatted = Units.format(kotlin.math.abs(this), decimals)
@@ -422,7 +438,7 @@ fun LogMeasurementsSheet(
 
             metrics.forEach { metric ->
                 LabeledField(
-                    label = "${metric.name} (${metric.unitLabel(units)})".trim(),
+                    label = withUnit(metric.name, metric.unitLabel(units)),
                     value = values.value[metric.id].orEmpty(),
                     onValueChange = { v -> values.value = values.value + (metric.id to v) },
                     keyboardType = KeyboardType.Decimal

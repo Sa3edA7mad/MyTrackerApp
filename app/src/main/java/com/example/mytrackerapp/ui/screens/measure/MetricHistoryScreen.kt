@@ -327,7 +327,7 @@ private fun EditEntryDialog(
         text = {
             Column {
                 LabeledField(
-                    label = "Value ($unitLabel)".trim(),
+                    label = withUnit("Value", unitLabel),
                     value = value,
                     onValueChange = { value = it.filter { c -> c.isDigit() || c == '.' } },
                     keyboardType = KeyboardType.Decimal
