@@ -189,7 +189,7 @@ class TrackerRepository(
     fun observeCircuit(week: Int, day: Int, circuit: Int): Flow<UiState<CircuitView>> =
         activeRules.flatMapLatest { (cycle, rules) ->
             combine(
-                exercises.observeActive(),
+                exercises.observeAll(),
                 completions.observeExerciseIdsIn(cycle.id, week, day, circuit),
                 validCircuitCounts(cycle.id, rules),
                 days.observeForCycle(cycle.id),
@@ -202,10 +202,18 @@ class TrackerRepository(
                     CIRCUIT_STRETCH -> "STRETCH"
                     else -> "PROGRAM"
                 }
-                val orderIndex = programOrder.withIndex().associate { (i, id) -> id to i }
-                val list = catalog.map { it.toDomain() }
-                    .filter { it.slot.name == wantedSlot }
-                    .sortedWith(compareBy({ orderIndex[it.id] ?: Int.MAX_VALUE }, { it.sortOrder }))
+                // INVARIANT 7: a program circuit shows exactly the composition its cycle was
+                // snapshotted with — the same set `exercisesPerCircuit` counted — so archiving,
+                // disabling or adding an exercise mid-cycle can't leave a circuit that never
+                // completes. Routines read the live, enabled catalog.
+                val byId = catalog.associateBy { it.id }
+                val list = if (wantedSlot == "PROGRAM" && programOrder.isNotEmpty()) {
+                    programOrder.mapNotNull { byId[it]?.toDomain() }
+                } else {
+                    catalog.filter { it.slot == wantedSlot && it.enabled && it.archivedAt == null }
+                        .sortedBy { it.sortOrder }
+                        .map { it.toDomain() }
+                }
 
                 // INVARIANT 4: a day past the current position is a read-only preview,
                 // unless the rules have turned that lock off.
