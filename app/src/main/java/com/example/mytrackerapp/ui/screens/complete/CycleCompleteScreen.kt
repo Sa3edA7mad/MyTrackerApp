@@ -121,7 +121,7 @@ fun CycleCompleteScreen(
             )
             Spacer(Modifier.height(Spacing.sm))
             Text(
-                "Four weeks done",
+                weeksDoneHeadline(summary.weeks),
                 style = MaterialTheme.typography.displayMedium,
                 color = TextPrimary,
                 textAlign = TextAlign.Center
@@ -191,6 +191,16 @@ fun CycleCompleteScreen(
             GhostButton("Not yet", onBack, Modifier.fillMaxWidth())
         }
     }
+}
+
+private val numberWords = listOf(
+    "One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten", "Eleven", "Twelve"
+)
+
+/** "Four weeks done" for the shipped program; follows the cycle's own length otherwise. */
+internal fun weeksDoneHeadline(weeks: Int): String {
+    val count = numberWords.getOrNull(weeks - 1) ?: "$weeks"
+    return "$count week${if (weeks == 1) "" else "s"} done"
 }
 
 /* ------------------------------------------------------------------ previews */

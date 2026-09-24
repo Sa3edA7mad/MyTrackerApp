@@ -375,6 +375,9 @@ class TrackerRepository(
         }
     }
 
+    /** The rules the running cycle was snapshotted under (INVARIANT 7). */
+    fun observeActiveRules(): Flow<ProgramRules> = activeRules.map { it.second }
+
     /** The day the counter is on, for screens that need to gate editing (INVARIANT 4). */
     fun observeCurrentPosition(): Flow<Position?> = currentPositionFlow()
 
@@ -470,7 +473,8 @@ class TrackerRepository(
                         bestStreak = longestStreak(trainingDates),
                         elapsedDays = (ChronoUnit.DAYS.between(started, today()).toInt() + 1)
                             .coerceAtLeast(1),
-                        daysClosedEarly = dayRows.count { it.closedAt != null }
+                        daysClosedEarly = dayRows.count { it.closedAt != null },
+                        weeks = rules.weeks
                     )
                 )
             }

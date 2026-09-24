@@ -65,6 +65,7 @@ import com.example.mytrackerapp.ui.theme.TextSecondary
 import com.example.mytrackerapp.ui.theme.TextTertiary
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 
 class ProgramViewModel(repo: TrackerRepository) : ViewModel() {
@@ -74,6 +75,11 @@ class ProgramViewModel(repo: TrackerRepository) : ViewModel() {
 
     val current: StateFlow<Position?> = repo.observeCurrentPosition()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    /** The running cycle's INVARIANT 4 toggle, so previews are only labelled when locked. */
+    val lockFutureDays: StateFlow<Boolean> = repo.observeActiveRules()
+        .map { it.lockFutureDays }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), true)
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
@@ -93,6 +99,7 @@ fun ProgramRoute(
 ) {
     val state by viewModel.state.collectAsState()
     val current by viewModel.current.collectAsState()
+    val lockFutureDays by viewModel.lockFutureDays.collectAsState()
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -103,7 +110,8 @@ fun ProgramRoute(
         is UiState.Ready -> ProgramScreen(
             weeks = s.data,
             current = current,
-            onOpenCircuit = onOpenCircuit
+            onOpenCircuit = onOpenCircuit,
+            lockFutureDays = lockFutureDays
         )
     }
 }
@@ -112,7 +120,8 @@ fun ProgramRoute(
 fun ProgramScreen(
     weeks: List<WeekState>,
     current: Position?,
-    onOpenCircuit: (week: Int, day: Int, circuit: Int) -> Unit
+    onOpenCircuit: (week: Int, day: Int, circuit: Int) -> Unit,
+    lockFutureDays: Boolean = true
 ) {
     var expanded by remember { mutableStateOf<Position?>(null) }
 
@@ -122,8 +131,11 @@ fun ProgramScreen(
         item {
             Spacer(Modifier.height(Spacing.sm))
             Text("Program", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+            val daysPerWeek = weeks.firstOrNull()?.days?.size ?: 0
             Text(
-                "4 weeks · 6 days a week · 132 circuits",
+                "${weeks.size} week${if (weeks.size == 1) "" else "s"} · " +
+                    "$daysPerWeek day${if (daysPerWeek == 1) "" else "s"} a week · " +
+                    "${weeks.sumOf { it.circuitsTotal }} circuits",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextTertiary
             )
@@ -135,6 +147,7 @@ fun ProgramScreen(
             WeekCard(
                 week = week,
                 current = current,
+                lockFutureDays = lockFutureDays,
                 expandedDay = expanded?.takeIf { it.week == week.week }?.day,
                 onToggleDay = { day ->
                     val p = Position(week.week, day)
@@ -153,6 +166,7 @@ fun ProgramScreen(
 private fun WeekCard(
     week: WeekState,
     current: Position?,
+    lockFutureDays: Boolean,
     expandedDay: Int?,
     onToggleDay: (Int) -> Unit,
     onOpenCircuit: (Int, Int, Int) -> Unit
@@ -177,7 +191,7 @@ private fun WeekCard(
                     color = if (week.isCurrent) Accent else TextTertiary
                 )
                 Text(
-                    "${week.circuitsPerDay} circuits/day · 6 days",
+                    "${week.circuitsPerDay} circuits/day · ${week.days.size} days",
                     style = MaterialTheme.typography.titleMedium,
                     color = TextPrimary
                 )
@@ -204,7 +218,8 @@ private fun WeekCard(
         val open = week.days.firstOrNull { it.day == expandedDay }
         if (open != null) {
             Spacer(Modifier.height(Spacing.md))
-            val isFuture = current != null && isAfter(Position(open.week, open.day), current)
+            val isFuture = lockFutureDays && current != null &&
+                isAfter(Position(open.week, open.day), current)
             Text(
                 if (isFuture) {
                     "Day ${open.day} · preview — finish the current day first"
@@ -287,14 +302,11 @@ private fun DaySquare(
 }
 
 /**
- * Mirrors the repository's INVARIANT 4 rule so the UI can label previews.
- *
- * Uses [ProgramRules.DEFAULT] rather than the live rules — this screen doesn't yet receive
- * the active rule set. T11 wires `lockFutureDays` through properly; until then this matches
- * today's fixed behaviour exactly.
+ * Mirrors the repository's INVARIANT 4 rule so the UI can label previews. Program order is
+ * week-major, so this holds for any rule shape — unlike indexing into a fixed rule set.
  */
 private fun isAfter(candidate: Position, current: Position): Boolean =
-    ProgramRules.DEFAULT.isAfter(candidate, current)
+    compareValuesBy(candidate, current, { it.week }, { it.day }) > 0
 
 /* ------------------------------------------------------------------ previews */
 

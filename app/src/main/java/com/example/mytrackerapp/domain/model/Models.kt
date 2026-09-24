@@ -183,7 +183,9 @@ data class CycleSummary(
     val bestStreak: Int,
     /** Calendar days from the first session to now. */
     val elapsedDays: Int,
-    val daysClosedEarly: Int
+    val daysClosedEarly: Int,
+    /** Program length under the cycle's rules, for the headline. */
+    val weeks: Int = 4
 ) {
     val percent: Int
         get() = if (exercisesTotal == 0) 0 else (exercisesDone * 100) / exercisesTotal
