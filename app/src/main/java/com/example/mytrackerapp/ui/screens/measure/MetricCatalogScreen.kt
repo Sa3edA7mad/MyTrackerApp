@@ -67,7 +67,7 @@ import kotlinx.coroutines.launch
 
 class MetricCatalogViewModel(private val repo: MeasurementRepository) : ViewModel() {
 
-    val metrics: StateFlow<List<Metric>> = repo.observeMetrics(includeDisabled = true)
+    val metrics: StateFlow<List<Metric>> = repo.observeMetrics(includeDisabled = true, includeArchived = true)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
 
     fun setEnabled(id: String, enabled: Boolean) {

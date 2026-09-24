@@ -121,4 +121,15 @@ class MeasurementRepositoryTest {
         assertEquals("LENGTH", builtIn.kind)
         assertFalse(builtIn.isCustom)
     }
+
+    @Test
+    fun anArchivedMetricStaysListableForTheCatalogScreen() = runTest {
+        val id = repo.createMetric("Grip strength", MetricKind.COUNT, 0, "").getOrThrow()
+        repo.archiveMetric(id)
+
+        assertFalse(repo.observeMetrics(includeDisabled = true).first().any { it.id == id })
+        val archived = repo.observeMetrics(includeDisabled = true, includeArchived = true).first()
+            .first { it.id == id }
+        assertTrue(archived.isArchived)
+    }
 }

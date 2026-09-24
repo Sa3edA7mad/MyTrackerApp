@@ -60,9 +60,15 @@ class MeasurementRepository(
     private val unitPrefs: () -> Flow<UnitPrefs>
 ) {
 
-    fun observeMetrics(includeDisabled: Boolean = false): Flow<List<Metric>> =
-        (if (includeDisabled) metrics.observeAll() else metrics.observeEnabled())
-            .map { list -> list.map { it.toDomain() } }
+    fun observeMetrics(
+        includeDisabled: Boolean = false,
+        includeArchived: Boolean = false
+    ): Flow<List<Metric>> =
+        when {
+            includeArchived -> metrics.observeIncludingArchived()
+            includeDisabled -> metrics.observeAll()
+            else -> metrics.observeEnabled()
+        }.map { list -> list.map { it.toDomain() } }
 
     fun observeHistory(metricId: String): Flow<List<MeasurementEntry>> =
         measurements.observeHistory(metricId).map { list -> list.map { it.toDomain() } }
@@ -147,7 +153,7 @@ class MeasurementRepository(
             if (name.isBlank()) return@withContext Result.failure(IllegalArgumentException("Name can't be empty."))
             // Deduped: a custom "Waist" must not overwrite the built-in waist metric (REPLACE).
             val id = uniqueId(slugify(name))
-            val maxSort = metrics.observeAll().first().maxOfOrNull { it.sortOrder } ?: 0
+            val maxSort = metrics.observeIncludingArchived().first().maxOfOrNull { it.sortOrder } ?: 0
             metrics.upsert(
                 MetricEntity(
                     id = id,
