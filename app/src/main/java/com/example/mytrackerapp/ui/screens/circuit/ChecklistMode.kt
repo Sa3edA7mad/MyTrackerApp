@@ -35,6 +35,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -269,7 +271,10 @@ private fun ChecklistRow(
                         }
                         onToggle(checked)
                     }
-                ),
+                )
+                // The name is a separate tap target, so the checkbox needs its own label or
+                // TalkBack reads an anonymous "checkbox".
+                .semantics { contentDescription = "Mark ${exercise.name} done" },
             contentAlignment = Alignment.Center
         ) {
             CheckMark(done = done, enabled = true)
