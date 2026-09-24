@@ -9,11 +9,13 @@ import com.example.mytrackerapp.data.db.SeedCallback
 import com.example.mytrackerapp.domain.LengthUnit
 import com.example.mytrackerapp.domain.UnitPrefs
 import com.example.mytrackerapp.domain.WeightUnit
+import com.example.mytrackerapp.domain.model.MetricKind
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
@@ -108,5 +110,15 @@ class MeasurementRepositoryTest {
         repo.log("waist", 10.0, System.currentTimeMillis()) // 10 in
         val stored = repo.observeHistory("waist").first().first().value
         assertEquals(25.4, stored, 1e-6)
+    }
+
+    @Test
+    fun aCustomMetricNamedLikeABuiltInDoesNotReplaceIt() = runTest {
+        val id = repo.createMetric("Waist", MetricKind.COUNT, 0, "").getOrThrow()
+
+        assertEquals("waist_2", id)
+        val builtIn = db.metricDao().getById("waist")!!
+        assertEquals("LENGTH", builtIn.kind)
+        assertFalse(builtIn.isCustom)
     }
 }
