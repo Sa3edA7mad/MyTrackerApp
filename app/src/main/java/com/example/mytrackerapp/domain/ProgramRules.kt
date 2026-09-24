@@ -62,6 +62,32 @@ data class ProgramRules(
         !isDaySettled(p.week, doneByPosition[p] ?: 0, p in closedPositions)
     }
 
+    /**
+     * The day Today shows and warm-up/stretch write to.
+     *
+     * Same as [nextPosition] except in one case: a day whose circuits were just finished is
+     * settled, so [nextPosition] has already moved on — but its stretch comes *after* the last
+     * circuit. That day stays on Today until its stretch is done or skipped, or until work on
+     * the next day starts. Totals and settling are unaffected.
+     */
+    fun todayPosition(
+        doneByPosition: Map<Position, Int>,
+        closedPositions: Set<Position>,
+        stretchDonePositions: Set<Position>
+    ): Position? {
+        val next = nextPosition(doneByPosition, closedPositions)
+        // Counted routines already keep the day open until the stretch is ticked.
+        if (!stretchEnabled || countRoutinesInTotals) return next
+        if (next != null && (doneByPosition[next] ?: 0) > 0) return next
+
+        val nextIndex = next?.let { allPositions.indexOf(it) } ?: allPositions.size
+        val finished = allPositions.getOrNull(nextIndex - 1) ?: return next
+        val awaitingStretch = finished !in closedPositions &&
+            finished !in stretchDonePositions &&
+            (doneByPosition[finished] ?: 0) >= exercisesPerDay(finished.week)
+        return if (awaitingStretch) finished else next
+    }
+
     fun isAfter(candidate: Position, current: Position): Boolean =
         allPositions.indexOf(candidate) > allPositions.indexOf(current)
 

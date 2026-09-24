@@ -133,6 +133,9 @@ class TrackerRepository(
         circuitCounts.groupBy { Position(it.week, it.day) }
             .mapValues { (_, rows) -> rows.sumOf { it.done } }
 
+    private fun stretchDoneFrom(dayRows: List<DayEntity>): Set<Position> =
+        dayRows.filter { it.stretchDoneAt != null }.map { Position(it.week, it.day) }.toSet()
+
     /* ------------------------------------------------------------------ today */
 
     fun observeToday(): Flow<UiState<TodayView>> = activeRules.flatMapLatest { (cycle, rules) ->
@@ -147,8 +150,8 @@ class TrackerRepository(
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
 
-            val position = rules.nextPosition(doneByPosition, closed)
-                ?: return@combine UiState.Ready(TodayView.CycleComplete)
+            val position = rules.todayPosition(doneByPosition, closed, stretchDoneFrom(dayRows))
+                ?: return@combine UiState.Ready(TodayView.CycleComplete(rules.allPositions.size))
 
             val row = dayRows.firstOrNull { it.week == position.week && it.day == position.day }
             val counts = circuitCounts
@@ -168,7 +171,11 @@ class TrackerRepository(
                 warmUpDone = row?.warmUpDoneAt != null,
                 stretchDone = row?.stretchDoneAt != null,
                 closed = row?.closedAt != null,
-                exercisesPerCircuit = rules.exercisesPerCircuit
+                exercisesPerCircuit = rules.exercisesPerCircuit,
+                warmUpEnabled = rules.warmUpEnabled,
+                stretchEnabled = rules.stretchEnabled,
+                warmUpCount = rules.warmUpCount,
+                stretchCount = rules.stretchCount
             )
             UiState.Ready(TodayView.Active(state))
         }
@@ -244,6 +251,21 @@ class TrackerRepository(
         }
     }.distinctUntilChanged()
 
+    /** The day Today shows — where warm-up and stretch belong. See [ProgramRules.todayPosition]. */
+    private fun todayPositionFlow(): Flow<Position?> = activeRules.flatMapLatest { (cycle, rules) ->
+        combine(
+            validCircuitCounts(cycle.id, rules),
+            days.observeForCycle(cycle.id)
+        ) { circuitCounts, dayRows ->
+            rules.todayPosition(
+                dayCountsFrom(circuitCounts),
+                dayRows.filter { it.closedAt != null }
+                    .map { Position(it.week, it.day) }.toSet(),
+                stretchDoneFrom(dayRows)
+            )
+        }
+    }.distinctUntilChanged()
+
     /**
      * One-shot equivalent of [validCircuitCounts]. `getDayCounts` cannot express the
      * per-week circuit bound that makes a completion an orphan (INVARIANT 8), so this
@@ -255,23 +277,24 @@ class TrackerRepository(
             .groupBy { Position(it.week, it.day) }
             .mapValues { (_, rows) -> rows.size }
 
-    private suspend fun currentPosition(cycleId: Long): Position? {
+    private suspend fun todayPosition(cycleId: Long): Position? {
         val rules = rulesRepo.rulesFor(cycleId)
-        return rules.nextPosition(
+        val dayRows = days.getForCycle(cycleId)
+        return rules.todayPosition(
             validDoneByPosition(cycleId, rules),
-            days.getForCycle(cycleId).filter { it.closedAt != null }
-                .map { Position(it.week, it.day) }.toSet()
+            dayRows.filter { it.closedAt != null }.map { Position(it.week, it.day) }.toSet(),
+            stretchDoneFrom(dayRows)
         )
     }
 
     /**
-     * Warm-up and stretch always belong to whatever day you are on, so unlike a circuit
+     * Warm-up and stretch always belong to the day Today is showing, so unlike a circuit
      * they resolve their own position rather than taking one from the route.
      *
      * @param routineCircuit [CIRCUIT_WARMUP] or [CIRCUIT_STRETCH].
      */
     fun observeRoutine(routineCircuit: Int): Flow<UiState<CircuitView>> =
-        currentPositionFlow().flatMapLatest { position ->
+        todayPositionFlow().flatMapLatest { position ->
             if (position == null) {
                 flowOf(UiState.Error("This cycle is finished."))
             } else {
@@ -285,14 +308,14 @@ class TrackerRepository(
         done: Boolean
     ) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
-        val position = currentPosition(cycleId) ?: return@withContext
+        val position = todayPosition(cycleId) ?: return@withContext
         setExerciseDone(position.week, position.day, routineCircuit, exerciseId, done)
     }
 
     /** Sets the day-level flag. Deliberately writes no completions, so skipping works. */
     suspend fun markRoutineDone(routineCircuit: Int) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
-        val position = currentPosition(cycleId) ?: return@withContext
+        val position = todayPosition(cycleId) ?: return@withContext
         when (routineCircuit) {
             CIRCUIT_WARMUP -> markWarmUpDone(position.week, position.day)
             CIRCUIT_STRETCH -> markStretchDone(position.week, position.day)

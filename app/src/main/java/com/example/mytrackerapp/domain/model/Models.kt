@@ -64,7 +64,11 @@ data class DayState(
     val warmUpDone: Boolean,
     val stretchDone: Boolean,
     val closed: Boolean,
-    val exercisesPerCircuit: Int
+    val exercisesPerCircuit: Int,
+    val warmUpEnabled: Boolean = true,
+    val stretchEnabled: Boolean = true,
+    val warmUpCount: Int = 8,
+    val stretchCount: Int = 8
 ) {
     val circuitsTotal: Int get() = circuits.size
     val circuitsDone: Int get() = circuits.count { it.isComplete }
@@ -75,12 +79,19 @@ data class DayState(
     /** First incomplete circuit, or null when every circuit of the day is done. */
     val nextCircuit: Int? get() = circuits.firstOrNull { !it.isComplete }?.index
     val allCircuitsComplete: Boolean get() = nextCircuit == null
+
+    /** Warm-up still stands between the user and their next circuit. */
+    val warmUpPending: Boolean get() = warmUpEnabled && !warmUpDone
+
+    /** Circuits are finished but the stretch that closes the day is not. */
+    val stretchPending: Boolean get() = stretchEnabled && !stretchDone
 }
 
 /** What the Today screen is showing: an ordinary training day, or the end of the cycle. */
 sealed interface TodayView {
     data class Active(val day: DayState) : TodayView
-    data object CycleComplete : TodayView
+    /** [days] is the number of training days in the finished cycle, for the copy. */
+    data class CycleComplete(val days: Int) : TodayView
 }
 
 /** One circuit (or one routine) opened for work. */

@@ -117,4 +117,56 @@ class ProgramRulesTest {
     fun `parseCircuitsCsv ignores blank and non numeric entries`() {
         assertEquals(listOf(4, 5, 7), ProgramRules.parseCircuitsCsv("4, 5,,x,7"))
     }
+
+    /* ------------------------------------------------------- todayPosition */
+
+    private val d1 = Position(1, 1)
+    private val d2 = Position(1, 2)
+
+    @Test
+    fun `today holds a day whose circuits are done until it is stretched`() {
+        val done = mapOf(d1 to 52)
+        assertEquals(d2, default.nextPosition(done, emptySet()))
+        assertEquals(d1, default.todayPosition(done, emptySet(), emptySet()))
+    }
+
+    @Test
+    fun `stretching or skipping releases the hold`() {
+        assertEquals(d2, default.todayPosition(mapOf(d1 to 52), emptySet(), setOf(d1)))
+    }
+
+    @Test
+    fun `starting the next day releases the hold`() {
+        assertEquals(d2, default.todayPosition(mapOf(d1 to 52, d2 to 1), emptySet(), emptySet()))
+    }
+
+    @Test
+    fun `a day ended early is not held`() {
+        assertEquals(d2, default.todayPosition(mapOf(d1 to 10), setOf(d1), emptySet()))
+    }
+
+    @Test
+    fun `no hold when stretch is off or routines are counted`() {
+        val done = mapOf(d1 to 52)
+        assertEquals(d2, default.copy(stretchEnabled = false).todayPosition(done, emptySet(), emptySet()))
+        assertEquals(
+            Position(1, 1),
+            default.copy(countRoutinesInTotals = true).todayPosition(done, emptySet(), emptySet())
+        )
+    }
+
+    @Test
+    fun `the last day of the cycle is held before the cycle completes`() {
+        val rules = ProgramRules(weeks = 1, daysPerWeek = 1, circuitsPerWeek = listOf(1))
+        val only = Position(1, 1)
+        val done = mapOf(only to 13)
+        assertNull(rules.nextPosition(done, emptySet()))
+        assertEquals(only, rules.todayPosition(done, emptySet(), emptySet()))
+        assertNull(rules.todayPosition(done, emptySet(), setOf(only)))
+    }
+
+    @Test
+    fun `the first day is never held`() {
+        assertEquals(d1, default.todayPosition(emptyMap(), emptySet(), emptySet()))
+    }
 }
