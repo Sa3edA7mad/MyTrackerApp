@@ -1,5 +1,7 @@
 package com.example.mytrackerapp.domain
 
+import java.util.Locale
+
 /**
  * Display units only. Load is always stored in kilograms and length in centimetres
  * (see [ProgramRules] and the `completions`/`measurements` tables) — these enums and the
@@ -30,5 +32,11 @@ object Units {
     fun displayToCm(value: Double, unit: LengthUnit): Double =
         if (unit == LengthUnit.CM) value else value * CM_PER_IN
 
-    fun format(value: Double, decimals: Int): String = "%.${decimals}f".format(value)
+    /**
+     * Always a '.' decimal separator. These strings also pre-fill editable fields that are
+     * parsed back with toDoubleOrNull, which rejects "80,0" — so a device-locale format would
+     * make edits silently fail on comma-decimal locales.
+     */
+    fun format(value: Double, decimals: Int): String =
+        String.format(Locale.ROOT, "%.${decimals}f", value)
 }

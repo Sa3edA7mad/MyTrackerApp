@@ -47,7 +47,7 @@ import com.example.mytrackerapp.ui.theme.TextPrimary
 import com.example.mytrackerapp.ui.theme.TextTertiary
 
 private fun formatLoadValue(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else "%.1f".format(value)
+    if (value == value.toLong().toDouble()) value.toLong().toString() else Units.format(value, 1)
 
 /**
  * Opened instead of an immediate tick when an exercise tracks reps and/or load. SKIP, and
