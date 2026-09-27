@@ -64,8 +64,9 @@ class FullCycleTest {
     private suspend fun today(): TodayView =
         (repo.observeToday().first { it is UiState.Ready } as UiState.Ready).data
 
-    private suspend fun activePosition(): Position? =
-        (today() as? TodayView.Active)?.day?.let { Position(it.week, it.day) }
+    /** The settling counter (INVARIANT 3). Today can lag it by one day while a finished
+     *  day waits for its stretch — see StretchHoldTest. */
+    private suspend fun activePosition(): Position? = repo.observeCurrentPosition().first()
 
     @Test
     fun theWholeCycleCompletesAndTheCounterNeverSlips() = runTest {

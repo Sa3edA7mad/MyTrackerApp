@@ -345,6 +345,10 @@ interface MetricDao {
     @Query("SELECT * FROM metrics WHERE archivedAt IS NULL ORDER BY sortOrder")
     fun observeAll(): Flow<List<MetricEntity>>
 
+    /** Archived rows too — the metric catalog lists them, and their history stays readable. */
+    @Query("SELECT * FROM metrics ORDER BY sortOrder")
+    fun observeIncludingArchived(): Flow<List<MetricEntity>>
+
     @Query("SELECT * FROM metrics WHERE archivedAt IS NULL AND enabled = 1 ORDER BY sortOrder")
     fun observeEnabled(): Flow<List<MetricEntity>>
 

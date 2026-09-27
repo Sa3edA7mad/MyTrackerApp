@@ -11,6 +11,7 @@ import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.ExerciseSlot
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.UiState
+import com.example.mytrackerapp.domain.model.formVideoUrl
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.test.runTest
 import org.junit.After
@@ -138,5 +139,39 @@ class CatalogCrudTest {
             .sortedBy { it.sortOrder }
         assertEquals(second.id, after[0].id)
         assertEquals(first.id, after[1].id)
+    }
+
+    @Test
+    fun blankVideoUrlFollowsTheName() = runTest {
+        val id = catalog.create(draft(name = "Goblet Squat")).getOrThrow()
+
+        val created = catalog.observeAll().first().single { it.id == id }
+        assertEquals("", created.videoUrl)
+        assertEquals(
+            "https://www.youtube.com/results?search_query=Goblet%20Squat",
+            created.formVideoUrl
+        )
+
+        catalog.update(id, draft(name = "Goblet Squat Hold")).getOrThrow()
+        val renamed = catalog.observeAll().first().single { it.id == id }
+        assertEquals(
+            "https://www.youtube.com/results?search_query=Goblet%20Squat%20Hold",
+            renamed.formVideoUrl
+        )
+    }
+
+    @Test
+    fun theEditorCannotSwitchOffOrReslotTheLastProgramExercise() = runTest {
+        val program = db.exerciseDao().getAll().filter { it.slot == "PROGRAM" }.map { it.id }
+        program.drop(1).forEach { assertTrue(catalog.archive(it).isSuccess) }
+        val last = program.first()
+
+        val disabled = catalog.update(last, draft(name = "Last").copy(enabled = false))
+        assertTrue(disabled.isFailure)
+        val moved = catalog.update(last, draft(name = "Last", slot = ExerciseSlot.WARMUP))
+        assertTrue(moved.isFailure)
+        assertEquals(1, db.exerciseDao().countBySlot("PROGRAM"))
+
+        assertTrue("an ordinary edit still saves", catalog.update(last, draft(name = "Last")).isSuccess)
     }
 }

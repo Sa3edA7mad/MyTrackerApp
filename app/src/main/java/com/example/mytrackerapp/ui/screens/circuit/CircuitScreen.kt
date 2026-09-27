@@ -1,5 +1,6 @@
 package com.example.mytrackerapp.ui.screens.circuit
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -14,13 +15,17 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.style.TextAlign
 import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.launch
 import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.UiState
+import com.example.mytrackerapp.repo.SetDetail
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.theme.Accent
 import com.example.mytrackerapp.ui.theme.Spacing
@@ -29,7 +34,12 @@ import com.example.mytrackerapp.ui.theme.TextPrimary
 import com.example.mytrackerapp.ui.theme.TextSecondary
 
 /** An exercise waiting on the log sheet before its completion (and advance) is written. */
-private data class PendingLog(val exercise: Exercise, val onLogged: () -> Unit)
+private data class PendingLog(
+    val exercise: Exercise,
+    /** Most recently logged detail, loaded before the sheet opens to pre-fill it. */
+    val lastDetail: SetDetail?,
+    val onLogged: () -> Unit
+)
 
 @Composable
 fun CircuitRoute(
@@ -49,6 +59,11 @@ fun CircuitRoute(
     var showSummary by remember { mutableStateOf(false) }
     var restartKey by remember { mutableIntStateOf(0) }
     var pendingLog by remember { mutableStateOf<PendingLog?>(null) }
+    val scope = rememberCoroutineScope()
+    // The exercise opened from list view, run on its own in the guided pager.
+    var focusId by rememberSaveable { mutableStateOf<String?>(null) }
+
+    BackHandler(enabled = focusId != null) { focusId = null }
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -71,14 +86,31 @@ fun CircuitRoute(
             fun requestDone(exerciseId: String, onLogged: () -> Unit) {
                 val exercise = view.exercises.firstOrNull { it.id == exerciseId }
                 if (exercise != null && (exercise.tracksReps || exercise.tracksLoad)) {
-                    pendingLog = PendingLog(exercise, onLogged)
+                    scope.launch {
+                        pendingLog = PendingLog(exercise, viewModel.lastDetail(exercise.id), onLogged)
+                    }
                 } else {
                     viewModel.setDone(exerciseId, true)
                     onLogged()
                 }
             }
 
-            if (settings.guidedMode) {
+            val focus = focusId
+            if (focus != null) {
+                GuidedPager(
+                    // List view may complete a locked future day, so its single-exercise
+                    // run may too.
+                    view = view.copy(editable = true),
+                    settings = settings,
+                    overline = "CIRCUIT $circuit · WEEK $week DAY $day",
+                    onDone = { id, onLogged -> requestDone(id, onLogged) },
+                    onExit = { focusId = null },
+                    onFinished = { focusId = null },
+                    onSwitchToChecklist = null,
+                    startExerciseId = focus,
+                    singleExercise = true
+                )
+            } else if (settings.guidedMode) {
                 GuidedPager(
                     view = view,
                     settings = settings,
@@ -98,7 +130,13 @@ fun CircuitRoute(
                         if (done) requestDone(id) {} else viewModel.setDone(id, false)
                     },
                     onExit = onExit,
-                    onSwitchToGuided = { viewModel.setGuidedMode(true) }
+                    onSwitchToGuided = { viewModel.setGuidedMode(true) },
+                    onOpenExercise = { focusId = it },
+                    onCompleteAll = {
+                        viewModel.completeAll(
+                            view.exercises.map { it.id }.filterNot { it in view.doneIds }
+                        )
+                    }
                 )
             }
 
@@ -107,7 +145,7 @@ fun CircuitRoute(
                     exercise = pending.exercise,
                     week = view.week,
                     unitPrefs = unitPrefs,
-                    loadLastDetail = { viewModel.lastDetail(pending.exercise.id) },
+                    lastDetail = pending.lastDetail,
                     onSave = { detail ->
                         viewModel.setDone(pending.exercise.id, true, detail)
                         pendingLog = null

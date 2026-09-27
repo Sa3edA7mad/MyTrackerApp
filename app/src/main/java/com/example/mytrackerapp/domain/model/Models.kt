@@ -1,5 +1,7 @@
 package com.example.mytrackerapp.domain.model
 
+import com.example.mytrackerapp.domain.youtubeSearchUrl
+
 enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH }
 
 enum class TargetType { REPS, SECONDS }
@@ -32,6 +34,15 @@ data class Exercise(
     val isArchived: Boolean get() = archivedAt != null
 }
 
+/**
+ * The stored link, or a YouTube search for the name when none was entered — so every
+ * exercise, including ones added in the editor, has a form video.
+ *
+ * Resolved here rather than in `toDomain()` on purpose: the editor loads the raw
+ * [Exercise.videoUrl], so a blank field stays blank and the search follows later renames.
+ */
+val Exercise.formVideoUrl: String get() = videoUrl.ifBlank { youtubeSearchUrl(name) }
+
 /** Week w targets targetValue + progressionStep * (w - 1). progressionStep = 0 is the
  *  original fixed-target behaviour. */
 fun Exercise.targetForWeek(week: Int): Int = targetValue + progressionStep * (week - 1)
@@ -53,7 +64,11 @@ data class DayState(
     val warmUpDone: Boolean,
     val stretchDone: Boolean,
     val closed: Boolean,
-    val exercisesPerCircuit: Int
+    val exercisesPerCircuit: Int,
+    val warmUpEnabled: Boolean = true,
+    val stretchEnabled: Boolean = true,
+    val warmUpCount: Int = 8,
+    val stretchCount: Int = 8
 ) {
     val circuitsTotal: Int get() = circuits.size
     val circuitsDone: Int get() = circuits.count { it.isComplete }
@@ -64,12 +79,19 @@ data class DayState(
     /** First incomplete circuit, or null when every circuit of the day is done. */
     val nextCircuit: Int? get() = circuits.firstOrNull { !it.isComplete }?.index
     val allCircuitsComplete: Boolean get() = nextCircuit == null
+
+    /** Warm-up still stands between the user and their next circuit. */
+    val warmUpPending: Boolean get() = warmUpEnabled && !warmUpDone
+
+    /** Circuits are finished but the stretch that closes the day is not. */
+    val stretchPending: Boolean get() = stretchEnabled && !stretchDone
 }
 
 /** What the Today screen is showing: an ordinary training day, or the end of the cycle. */
 sealed interface TodayView {
     data class Active(val day: DayState) : TodayView
-    data object CycleComplete : TodayView
+    /** [days] is the number of training days in the finished cycle, for the copy. */
+    data class CycleComplete(val days: Int) : TodayView
 }
 
 /** One circuit (or one routine) opened for work. */
@@ -161,7 +183,9 @@ data class CycleSummary(
     val bestStreak: Int,
     /** Calendar days from the first session to now. */
     val elapsedDays: Int,
-    val daysClosedEarly: Int
+    val daysClosedEarly: Int,
+    /** Program length under the cycle's rules, for the headline. */
+    val weeks: Int = 4
 ) {
     val percent: Int
         get() = if (exercisesTotal == 0) 0 else (exercisesDone * 100) / exercisesTotal

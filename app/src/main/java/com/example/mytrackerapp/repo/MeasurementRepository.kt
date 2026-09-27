@@ -60,9 +60,15 @@ class MeasurementRepository(
     private val unitPrefs: () -> Flow<UnitPrefs>
 ) {
 
-    fun observeMetrics(includeDisabled: Boolean = false): Flow<List<Metric>> =
-        (if (includeDisabled) metrics.observeAll() else metrics.observeEnabled())
-            .map { list -> list.map { it.toDomain() } }
+    fun observeMetrics(
+        includeDisabled: Boolean = false,
+        includeArchived: Boolean = false
+    ): Flow<List<Metric>> =
+        when {
+            includeArchived -> metrics.observeIncludingArchived()
+            includeDisabled -> metrics.observeAll()
+            else -> metrics.observeEnabled()
+        }.map { list -> list.map { it.toDomain() } }
 
     fun observeHistory(metricId: String): Flow<List<MeasurementEntry>> =
         measurements.observeHistory(metricId).map { list -> list.map { it.toDomain() } }
@@ -145,8 +151,9 @@ class MeasurementRepository(
     suspend fun createMetric(name: String, kind: MetricKind, decimals: Int, hint: String): Result<String> =
         withContext(Dispatchers.IO) {
             if (name.isBlank()) return@withContext Result.failure(IllegalArgumentException("Name can't be empty."))
-            val id = slugify(name)
-            val maxSort = metrics.observeAll().first().maxOfOrNull { it.sortOrder } ?: 0
+            // Deduped: a custom "Waist" must not overwrite the built-in waist metric (REPLACE).
+            val id = uniqueId(slugify(name))
+            val maxSort = metrics.observeIncludingArchived().first().maxOfOrNull { it.sortOrder } ?: 0
             metrics.upsert(
                 MetricEntity(
                     id = id,
@@ -178,6 +185,15 @@ class MeasurementRepository(
         canonical <= 0.0 && metric.kind != "COUNT" -> "Value must be greater than zero."
         metric.kind == "PERCENT" && canonical !in 0.0..100.0 -> "Percent must be between 0 and 100."
         else -> null
+    }
+
+    private suspend fun uniqueId(base: String): String {
+        var candidate = base
+        var suffix = 2
+        while (metrics.getById(candidate) != null) {
+            candidate = "${base}_${suffix++}"
+        }
+        return candidate
     }
 
     private fun slugify(name: String): String =

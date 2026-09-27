@@ -47,6 +47,7 @@ import com.example.mytrackerapp.ui.RoutineType
 import com.example.mytrackerapp.ui.components.AppIcons
 import com.example.mytrackerapp.ui.components.CircuitCard
 import com.example.mytrackerapp.ui.components.CircuitCardState
+import com.example.mytrackerapp.ui.components.GhostButton
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.components.PrimaryButton
 import com.example.mytrackerapp.ui.components.ProgressRing
@@ -83,14 +84,15 @@ fun TodayRoute(
         is UiState.Loading -> LoadingState()
         is UiState.Error -> ErrorState(s.message)
         is UiState.Ready -> when (val view = s.data) {
-            is TodayView.CycleComplete -> CycleFinishedState(onCycleComplete)
+            is TodayView.CycleComplete -> CycleFinishedState(view.days, onCycleComplete)
 
             is TodayView.Active -> TodayScreen(
                 day = view.day,
                 onOpenCircuit = { circuit -> onOpenCircuit(view.day.week, view.day.day, circuit) },
                 onOpenRoutine = onOpenRoutine,
                 onOpenSettings = onOpenSettings,
-                onEndDayEarly = { viewModel.closeDayEarly(view.day.week, view.day.day) }
+                onEndDayEarly = { viewModel.closeDayEarly(view.day.week, view.day.day) },
+                onSkipStretch = { viewModel.skipStretch(view.day.week, view.day.day) }
             )
         }
     }
@@ -102,7 +104,8 @@ fun TodayScreen(
     onOpenCircuit: (Int) -> Unit,
     onOpenRoutine: (RoutineType) -> Unit,
     onOpenSettings: () -> Unit,
-    onEndDayEarly: () -> Unit
+    onEndDayEarly: () -> Unit,
+    onSkipStretch: () -> Unit = {}
 ) {
     var confirmEndDay by remember { mutableStateOf(false) }
     val nextCircuit = day.nextCircuit
@@ -120,14 +123,17 @@ fun TodayScreen(
             Spacer(Modifier.height(Spacing.base))
             Summary(day)
 
-            Spacer(Modifier.height(Spacing.md))
-            RoutineCard(
-                title = "WARM-UP",
-                subtitle = if (day.warmUpDone) "8 moves · done" else "8 moves · before your first circuit",
-                accent = CatWarmUp,
-                done = day.warmUpDone,
-                onClick = { onOpenRoutine(RoutineType.WARMUP) }
-            )
+            if (day.warmUpEnabled) {
+                Spacer(Modifier.height(Spacing.md))
+                RoutineCard(
+                    title = "WARM-UP",
+                    subtitle = "${day.warmUpCount} moves · " +
+                        if (day.warmUpDone) "done" else "before your first circuit",
+                    accent = CatWarmUp,
+                    done = day.warmUpDone,
+                    onClick = { onOpenRoutine(RoutineType.WARMUP) }
+                )
+            }
 
             SectionHeader("Circuits")
             day.circuits.forEach { circuit ->
@@ -145,20 +151,22 @@ fun TodayScreen(
                 )
             }
 
-            Spacer(Modifier.height(Spacing.xs))
-            RoutineCard(
-                title = "STRETCH",
-                subtitle = when {
-                    day.stretchDone -> "8 stretches · done"
-                    day.allCircuitsComplete -> "8 stretches · finish your day"
-                    else -> "8 stretches · after your last circuit"
-                },
-                accent = CatStretch,
-                done = day.stretchDone,
-                // Dimmed until the day's circuits are finished, but still reachable.
-                dimmed = !day.allCircuitsComplete && !day.stretchDone,
-                onClick = { onOpenRoutine(RoutineType.STRETCH) }
-            )
+            if (day.stretchEnabled) {
+                Spacer(Modifier.height(Spacing.xs))
+                RoutineCard(
+                    title = "STRETCH",
+                    subtitle = "${day.stretchCount} stretches · " + when {
+                        day.stretchDone -> "done"
+                        day.allCircuitsComplete -> "finish your day"
+                        else -> "after your last circuit"
+                    },
+                    accent = CatStretch,
+                    done = day.stretchDone,
+                    // Dimmed until the day's circuits are finished, but still reachable.
+                    dimmed = !day.allCircuitsComplete && !day.stretchDone,
+                    onClick = { onOpenRoutine(RoutineType.STRETCH) }
+                )
+            }
 
             Spacer(Modifier.height(Spacing.lg))
         }
@@ -166,18 +174,26 @@ fun TodayScreen(
         StickyCtaBar {
             when {
                 nextCircuit != null -> PrimaryButton(
-                    text = if (!day.warmUpDone) "Warm up, then circuit $nextCircuit"
+                    text = if (day.warmUpPending) "Warm up, then circuit $nextCircuit"
                     else "Start circuit $nextCircuit",
                     onClick = {
-                        if (!day.warmUpDone) onOpenRoutine(RoutineType.WARMUP)
+                        if (day.warmUpPending) onOpenRoutine(RoutineType.WARMUP)
                         else onOpenCircuit(nextCircuit)
                     }
                 )
 
-                !day.stretchDone -> PrimaryButton(
-                    text = "Finish with stretching",
-                    onClick = { onOpenRoutine(RoutineType.STRETCH) }
-                )
+                // Today holds a finished day here until its stretch is done or skipped.
+                day.stretchPending -> {
+                    PrimaryButton(
+                        text = "Finish with stretching",
+                        onClick = { onOpenRoutine(RoutineType.STRETCH) }
+                    )
+                    GhostButton(
+                        "Skip stretching",
+                        onClick = onSkipStretch,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
 
                 else -> PrimaryButton(text = "Day complete", onClick = {}, enabled = false)
             }
@@ -371,7 +387,7 @@ private fun RoutineCard(
  * gave no sense of having finished anything.
  */
 @Composable
-private fun CycleFinishedState(onCycleComplete: () -> Unit) {
+private fun CycleFinishedState(days: Int, onCycleComplete: () -> Unit) {
     Column(Modifier.fillMaxSize()) {
         Column(
             Modifier.weight(1f).padding(horizontal = Spacing.lg),
@@ -392,7 +408,7 @@ private fun CycleFinishedState(onCycleComplete: () -> Unit) {
             )
             Spacer(Modifier.height(Spacing.md))
             Text(
-                "All 24 days of this cycle are done. Take a look at how it went, then start " +
+                "All $days days of this cycle are done. Take a look at how it went, then start " +
                     "again whenever you're ready — your history is kept.",
                 style = MaterialTheme.typography.bodyLarge,
                 color = TextSecondary,

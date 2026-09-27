@@ -120,7 +120,7 @@ fun ProgressScreen(stats: CycleStats, onOpenMeasure: () -> Unit = {}) {
             StatTile("${stats.exercisesDone}", "Ex. done", Modifier.weight(1f))
         }
 
-        SectionHeader("4-week map")
+        SectionHeader("${stats.weeks.size}-week map")
         HeatMap(stats.heat)
         Spacer(Modifier.height(Spacing.sm))
         Legend()

@@ -10,13 +10,14 @@ import com.example.mytrackerapp.data.entity.MetricEntity
  * U+00B7 MIDDLE DOT and the dash in the Crunch instruction is U+2014 EM DASH; both are
  * asserted in SeedTest so a mangled encoding fails the build rather than shipping.
  *
- * Nine of the workbook's video links are YouTube *search* URLs rather than specific
- * videos. That is how the sheet ships and it is preserved deliberately.
+ * Most of the workbook's video links are YouTube *search* URLs rather than specific
+ * videos. The search is the exercise name only — the sheet's " exercise proper form"
+ * suffix was dropped on request (MIGRATION_5_6 strips it from installed catalogs).
  */
 object SeedData {
 
     private fun search(encodedName: String) =
-        "https://www.youtube.com/results?search_query=${encodedName}%20exercise%20proper%20form"
+        "https://www.youtube.com/results?search_query=$encodedName"
 
     private const val BODYWEIGHT = "BODYWEIGHT"
     private const val BAND = "BAND"

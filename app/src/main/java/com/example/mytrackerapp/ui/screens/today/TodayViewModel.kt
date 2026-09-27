@@ -23,6 +23,11 @@ class TodayViewModel(private val repo: TrackerRepository) : ViewModel() {
         viewModelScope.launch { repo.closeDayEarly(week, day) }
     }
 
+    /** Lets Today move past a finished day without stretching. Writes no completions. */
+    fun skipStretch(week: Int, day: Int) {
+        viewModelScope.launch { repo.markStretchDone(week, day) }
+    }
+
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {

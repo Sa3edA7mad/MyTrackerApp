@@ -92,7 +92,7 @@ class MetricHistoryViewModel(
 ) : ViewModel() {
 
     val state: StateFlow<MetricHistoryState> = combine(
-        repo.observeMetrics(includeDisabled = true).map { list -> list.firstOrNull { it.id == metricId } },
+        repo.observeMetrics(includeDisabled = true, includeArchived = true).map { list -> list.firstOrNull { it.id == metricId } },
         unitsFlow,
         repo.observeHistory(metricId)
     ) { metric, units, entries ->
@@ -327,7 +327,7 @@ private fun EditEntryDialog(
         text = {
             Column {
                 LabeledField(
-                    label = "Value ($unitLabel)".trim(),
+                    label = withUnit("Value", unitLabel),
                     value = value,
                     onValueChange = { value = it.filter { c -> c.isDigit() || c == '.' } },
                     keyboardType = KeyboardType.Decimal

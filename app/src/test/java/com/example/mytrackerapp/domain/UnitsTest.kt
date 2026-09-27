@@ -42,4 +42,17 @@ class UnitsTest {
         assertEquals("20.5", Units.format(20.5, 1))
         assertEquals("21", Units.format(20.5, 0))
     }
+
+    @Test
+    fun `format uses a dot on comma-decimal locales so fields parse back`() {
+        val saved = java.util.Locale.getDefault()
+        try {
+            java.util.Locale.setDefault(java.util.Locale.GERMANY)
+            val text = Units.format(80.0, 1)
+            assertEquals("80.0", text)
+            assertEquals(80.0, text.toDouble(), 0.0)
+        } finally {
+            java.util.Locale.setDefault(saved)
+        }
+    }
 }

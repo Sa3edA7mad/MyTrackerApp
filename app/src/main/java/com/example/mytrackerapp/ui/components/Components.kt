@@ -188,7 +188,7 @@ fun TargetBadge(text: String, modifier: Modifier = Modifier) {
 /* ------------------------------------------------------------------ checkbox */
 
 @Composable
-private fun CheckMark(done: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
+internal fun CheckMark(done: Boolean, enabled: Boolean, modifier: Modifier = Modifier) {
     val borderColor = when {
         done -> Accent
         enabled -> OutlineStrong
@@ -348,7 +348,8 @@ fun CircuitCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val clickable = state != CircuitCardState.LOCKED
+    // LOCKED stays dimmed but opens: guided mode shows it as a read-only preview, and
+    // list view can still tick it.
     val alpha = if (state == CircuitCardState.LOCKED) 0.4f else 1f
     Row(
         modifier = modifier
@@ -363,7 +364,7 @@ fun CircuitCard(
                 color = if (state == CircuitCardState.ACTIVE) Accent else Outline,
                 shape = RoundedCornerShape(Radius.md)
             )
-            .clickable(enabled = clickable, role = Role.Button, onClick = onClick)
+            .clickable(role = Role.Button, onClick = onClick)
             .padding(horizontal = Spacing.md, vertical = Spacing.md),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(Spacing.md)

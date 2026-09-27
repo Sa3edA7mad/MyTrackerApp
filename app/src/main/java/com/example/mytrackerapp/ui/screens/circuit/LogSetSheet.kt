@@ -19,7 +19,6 @@ import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,12 +46,15 @@ import com.example.mytrackerapp.ui.theme.TextPrimary
 import com.example.mytrackerapp.ui.theme.TextTertiary
 
 private fun formatLoadValue(value: Double): String =
-    if (value == value.toLong().toDouble()) value.toLong().toString() else "%.1f".format(value)
+    if (value == value.toLong().toDouble()) value.toLong().toString() else Units.format(value, 1)
 
 /**
  * Opened instead of an immediate tick when an exercise tracks reps and/or load. SKIP, and
  * dismissing the sheet without saving, both finish the set with no detail — logging must
  * never block finishing a circuit.
+ *
+ * [lastDetail] is loaded *before* the sheet opens, so the fields start pre-filled rather
+ * than filling in asynchronously — which could overwrite something already typed.
  */
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -60,31 +62,28 @@ fun LogSetSheet(
     exercise: Exercise,
     week: Int,
     unitPrefs: UnitPrefs,
-    loadLastDetail: suspend () -> SetDetail?,
+    lastDetail: SetDetail?,
     onSave: (SetDetail) -> Unit,
     onSkip: () -> Unit
 ) {
-    var reps by remember(exercise.id) { mutableStateOf("") }
-    var load by remember(exercise.id) { mutableStateOf("") }
-    var band by remember(exercise.id) { mutableStateOf(exercise.defaultBandLevel.orEmpty()) }
-    var rpe by remember(exercise.id) { mutableStateOf<Int?>(null) }
-    var note by remember(exercise.id) { mutableStateOf("") }
-
-    LaunchedEffect(exercise.id) {
-        val last = loadLastDetail()
-        if (exercise.tracksReps) {
-            reps = (last?.reps ?: exercise.targetForWeek(week)).toString()
-        }
-        if (exercise.tracksLoad) {
-            val loadKg = last?.loadKg ?: exercise.defaultLoadKg
-            if (loadKg != null) {
-                load = formatLoadValue(Units.kgToDisplay(loadKg, unitPrefs.weight))
-            }
-        }
-        band = last?.bandLevel ?: exercise.defaultBandLevel.orEmpty()
-        rpe = last?.rpe
-        note = last?.note.orEmpty()
+    var reps by remember(exercise.id) {
+        mutableStateOf(
+            if (exercise.tracksReps) (lastDetail?.reps ?: exercise.targetForWeek(week)).toString() else ""
+        )
     }
+    var load by remember(exercise.id) {
+        val loadKg = lastDetail?.loadKg ?: exercise.defaultLoadKg
+        mutableStateOf(
+            if (exercise.tracksLoad && loadKg != null) {
+                formatLoadValue(Units.kgToDisplay(loadKg, unitPrefs.weight))
+            } else ""
+        )
+    }
+    var band by remember(exercise.id) {
+        mutableStateOf(lastDetail?.bandLevel ?: exercise.defaultBandLevel.orEmpty())
+    }
+    var rpe by remember(exercise.id) { mutableStateOf(lastDetail?.rpe) }
+    var note by remember(exercise.id) { mutableStateOf(lastDetail?.note.orEmpty()) }
 
     val sheetState = rememberModalBottomSheetState()
 

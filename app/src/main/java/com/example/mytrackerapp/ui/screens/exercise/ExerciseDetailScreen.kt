@@ -1,5 +1,9 @@
 package com.example.mytrackerapp.ui.screens.exercise
 
+import com.example.mytrackerapp.domain.UnitPrefs
+import com.example.mytrackerapp.domain.Units
+import com.example.mytrackerapp.domain.WeightUnit
+import kotlinx.coroutines.flow.Flow
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -49,6 +53,7 @@ import com.example.mytrackerapp.domain.PerformanceSummary
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.DayTally
 import com.example.mytrackerapp.domain.model.Exercise
+import com.example.mytrackerapp.domain.model.formVideoUrl
 import com.example.mytrackerapp.domain.model.ExerciseDetail
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.UiState
@@ -79,7 +84,11 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 
-class ExerciseDetailViewModel(repo: TrackerRepository, id: String) : ViewModel() {
+class ExerciseDetailViewModel(
+    repo: TrackerRepository,
+    id: String,
+    unitsFlow: Flow<UnitPrefs>
+) : ViewModel() {
 
     val state: StateFlow<UiState<ExerciseDetail>> = repo.observeExerciseDetail(id)
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Loading)
@@ -88,12 +97,15 @@ class ExerciseDetailViewModel(repo: TrackerRepository, id: String) : ViewModel()
         repo.observePerformance(id)
             .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
 
+    val units: StateFlow<UnitPrefs> = unitsFlow
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitPrefs())
+
     companion object {
         fun factory(id: String): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                ExerciseDetailViewModel(app.container.repo, id)
+                ExerciseDetailViewModel(app.container.repo, id, app.container.rules.observeUnits())
             }
         }
     }
@@ -107,6 +119,7 @@ fun ExerciseDetailRoute(id: String, onBack: () -> Unit, onEdit: (String) -> Unit
     )
     val state by viewModel.state.collectAsState()
     val performance by viewModel.performance.collectAsState()
+    val units by viewModel.units.collectAsState()
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -125,6 +138,7 @@ fun ExerciseDetailRoute(id: String, onBack: () -> Unit, onEdit: (String) -> Unit
         is UiState.Ready -> ExerciseDetailScreen(
             detail = s.data,
             performance = performance,
+            weightUnit = units.weight,
             onBack = onBack,
             onEdit = { onEdit(id) }
         )
@@ -135,6 +149,7 @@ fun ExerciseDetailRoute(id: String, onBack: () -> Unit, onEdit: (String) -> Unit
 fun ExerciseDetailScreen(
     detail: ExerciseDetail,
     performance: PerformanceSummary? = null,
+    weightUnit: WeightUnit = WeightUnit.KG,
     onBack: () -> Unit,
     onEdit: () -> Unit = {}
 ) {
@@ -229,9 +244,9 @@ fun ExerciseDetailScreen(
                     .background(SurfaceColor)
                     .border(1.dp, Outline, RoundedCornerShape(Radius.md))
                     .clickable(role = Role.Button) {
-                        if (!openVideo(context, exercise.videoUrl)) {
+                        if (!openVideo(context, exercise.formVideoUrl)) {
                             scope.launch {
-                                snackbars.showSnackbar("No app can open ${exercise.videoUrl}")
+                                snackbars.showSnackbar("No app can open ${exercise.formVideoUrl}")
                             }
                         }
                     }
@@ -289,7 +304,9 @@ fun ExerciseDetailScreen(
                 SectionHeader("Performance")
                 Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
                     StatTile(
-                        performance.bestLoadKg?.let { "%.1f kg".format(it) }
+                        performance.bestLoadKg?.let {
+                            "${Units.format(Units.kgToDisplay(it, weightUnit), 1)} ${weightUnit.label}"
+                        }
                             ?: performance.bestReps?.let { "$it" }
                             ?: performance.bestHoldSeconds?.let { "${it}s" }
                             ?: "—",
@@ -302,7 +319,9 @@ fun ExerciseDetailScreen(
                         Modifier.weight(1f)
                     )
                     StatTile(
-                        performance.totalVolumeKg?.let { "%.0f kg".format(it) } ?: "—",
+                        performance.totalVolumeKg?.let {
+                            "${Units.format(Units.kgToDisplay(it, weightUnit), 0)} ${weightUnit.label}"
+                        } ?: "—",
                         "Total volume",
                         Modifier.weight(1f)
                     )

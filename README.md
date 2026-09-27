@@ -70,15 +70,17 @@ Run unit tests (pure domain logic, no Android dependency):
 ./gradlew testDebugUnitTest
 ```
 
-Run instrumented tests (Room migrations + repository behavior; needs a connected
-device/emulator):
+Run instrumented tests (Room migrations, repository behaviour, and the end-to-end UI suite in
+`app/src/androidTest/.../e2e/`, which drives the real app screen by screen; needs a connected
+device/emulator, and uninstalls the app afterwards, wiping its data):
 
 ```bash
 ./gradlew connectedDebugAndroidTest
 ```
 
 See [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md#testing) for what each suite actually
-guards and why.
+guards and why. Every feature, its exact on-screen behaviour, and a regression checklist keyed to
+those tests are in [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ## Tech stack
 

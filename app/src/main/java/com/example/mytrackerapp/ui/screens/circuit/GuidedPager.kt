@@ -37,6 +37,7 @@ import androidx.compose.ui.unit.dp
 import com.example.mytrackerapp.data.prefs.Settings
 import com.example.mytrackerapp.domain.model.CircuitView
 import com.example.mytrackerapp.domain.model.Exercise
+import com.example.mytrackerapp.domain.model.formVideoUrl
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.targetForWeek
 import com.example.mytrackerapp.ui.components.AppIcons
@@ -105,10 +106,19 @@ fun GuidedPager(
     /** Bump to send the pager back to the first unticked exercise. */
     restartKey: Int = 0,
     /** Extra full-width action, e.g. "Skip warm-up" on the routine screens. */
-    secondaryAction: Pair<String, () -> Unit>? = null
+    secondaryAction: Pair<String, () -> Unit>? = null,
+    /** Open on this exercise instead of the first unticked one. */
+    startExerciseId: String? = null,
+    /** Run only that exercise; finishing it calls [onFinished]. Used from list view. */
+    singleExercise: Boolean = false
 ) {
     val identity = "${view.week}/${view.day}/${view.circuit}"
-    var index by rememberSaveable(identity, restartKey) { mutableIntStateOf(view.firstUndoneIndex) }
+    var index by rememberSaveable(identity, restartKey, startExerciseId) {
+        mutableIntStateOf(
+            view.exercises.indexOfFirst { it.id == startExerciseId }.takeIf { it >= 0 }
+                ?: view.firstUndoneIndex
+        )
+    }
     var stage by rememberSaveable(index, identity) { mutableIntStateOf(STAGE_FIRST) }
 
     val exercise = view.exercises.getOrNull(index)
@@ -128,6 +138,10 @@ fun GuidedPager(
     if (timed) TimerCues(timer, settings.soundCues, settings.haptics)
 
     fun goNext() {
+        if (singleExercise) {
+            onFinished()
+            return
+        }
         val next = nextUndoneIndex(view.exercises, view.doneIds, index)
         if (next == null) onFinished() else {
             index = next
@@ -237,7 +251,11 @@ fun GuidedPager(
                 onAdvance = { advance() }
             )
             Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {
-                GhostButton("Skip", onClick = { goNext() }, modifier = Modifier.weight(1f))
+                if (singleExercise) {
+                    GhostButton("Back to list", onClick = onExit, modifier = Modifier.weight(1f))
+                } else {
+                    GhostButton("Skip", onClick = { goNext() }, modifier = Modifier.weight(1f))
+                }
                 if (onSwitchToChecklist != null) {
                     GhostButton(
                         "⇄ Checklist",
@@ -446,7 +464,7 @@ private fun InstructionCard(exercise: Exercise) {
             Modifier
                 .fillMaxWidth()
                 .clip(RoundedCornerShape(Radius.sm))
-                .clickable(role = Role.Button) { openVideo(context, exercise.videoUrl) }
+                .clickable(role = Role.Button) { openVideo(context, exercise.formVideoUrl) }
                 .padding(vertical = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
