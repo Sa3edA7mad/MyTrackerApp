@@ -68,7 +68,7 @@ class ChecklistE2eTest : E2eTest() {
         tapText("External Rotation")
         see("SIDE 1")
         seeButton("Back to list")
-        tapButton("✓  Done")
+        tapButton("Done · side 1")
         see("SIDE 1 DONE")
         see("SWITCH SIDES")
         tapButton("Continue · side 2")

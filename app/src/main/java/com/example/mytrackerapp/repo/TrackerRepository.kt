@@ -61,6 +61,13 @@ data class SetDetail(
     val note: String? = null
 )
 
+/**
+ * Days whose stretch routine is complete, for [ProgramRules.nextPosition]'s stretch-gate
+ * check (INVARIANT 3). Pulled out once so every call site derives it the same way.
+ */
+private fun List<DayEntity>.stretchDonePositions(): Set<Position> =
+    filter { it.stretchDoneAt != null }.map { Position(it.week, it.day) }.toSet()
+
 fun ExerciseEntity.toDomain(): Exercise = Exercise(
     id = id,
     name = name,
@@ -133,9 +140,6 @@ class TrackerRepository(
         circuitCounts.groupBy { Position(it.week, it.day) }
             .mapValues { (_, rows) -> rows.sumOf { it.done } }
 
-    private fun stretchDoneFrom(dayRows: List<DayEntity>): Set<Position> =
-        dayRows.filter { it.stretchDoneAt != null }.map { Position(it.week, it.day) }.toSet()
-
     /* ------------------------------------------------------------------ today */
 
     fun observeToday(): Flow<UiState<TodayView>> = activeRules.flatMapLatest { (cycle, rules) ->
@@ -150,7 +154,7 @@ class TrackerRepository(
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
 
-            val position = rules.todayPosition(doneByPosition, closed, stretchDoneFrom(dayRows))
+            val position = rules.nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
                 ?: return@combine UiState.Ready(TodayView.CycleComplete(rules.allPositions.size))
 
             val row = dayRows.firstOrNull { it.week == position.week && it.day == position.day }
@@ -220,7 +224,7 @@ class TrackerRepository(
                 val doneByPosition = dayCountsFrom(circuitCounts)
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-                val current = rules.nextPosition(doneByPosition, closed)
+                val current = rules.nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
                 val editable = !rules.lockFutureDays ||
                     current == null ||
                     !rules.isAfter(Position(week, day), current)
@@ -253,23 +257,9 @@ class TrackerRepository(
         ) { circuitCounts, dayRows ->
             rules.nextPosition(
                 dayCountsFrom(circuitCounts),
+                dayRows.stretchDonePositions(),
                 dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-            )
-        }
-    }.distinctUntilChanged()
-
-    /** The day Today shows — where warm-up and stretch belong. See [ProgramRules.todayPosition]. */
-    private fun todayPositionFlow(): Flow<Position?> = activeRules.flatMapLatest { (cycle, rules) ->
-        combine(
-            validCircuitCounts(cycle.id, rules),
-            days.observeForCycle(cycle.id)
-        ) { circuitCounts, dayRows ->
-            rules.todayPosition(
-                dayCountsFrom(circuitCounts),
-                dayRows.filter { it.closedAt != null }
-                    .map { Position(it.week, it.day) }.toSet(),
-                stretchDoneFrom(dayRows)
             )
         }
     }.distinctUntilChanged()
@@ -285,24 +275,24 @@ class TrackerRepository(
             .groupBy { Position(it.week, it.day) }
             .mapValues { (_, rows) -> rows.size }
 
-    private suspend fun todayPosition(cycleId: Long): Position? {
+    private suspend fun currentPosition(cycleId: Long): Position? {
         val rules = rulesRepo.rulesFor(cycleId)
         val dayRows = days.getForCycle(cycleId)
-        return rules.todayPosition(
+        return rules.nextPosition(
             validDoneByPosition(cycleId, rules),
-            dayRows.filter { it.closedAt != null }.map { Position(it.week, it.day) }.toSet(),
-            stretchDoneFrom(dayRows)
+            dayRows.stretchDonePositions(),
+            dayRows.filter { it.closedAt != null }.map { Position(it.week, it.day) }.toSet()
         )
     }
 
     /**
-     * Warm-up and stretch always belong to the day Today is showing, so unlike a circuit
+     * Warm-up and stretch always belong to whatever day you are on, so unlike a circuit
      * they resolve their own position rather than taking one from the route.
      *
      * @param routineCircuit [CIRCUIT_WARMUP] or [CIRCUIT_STRETCH].
      */
     fun observeRoutine(routineCircuit: Int): Flow<UiState<CircuitView>> =
-        todayPositionFlow().flatMapLatest { position ->
+        currentPositionFlow().flatMapLatest { position ->
             if (position == null) {
                 flowOf(UiState.Error("This cycle is finished."))
             } else {
@@ -316,14 +306,14 @@ class TrackerRepository(
         done: Boolean
     ) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
-        val position = todayPosition(cycleId) ?: return@withContext
+        val position = currentPosition(cycleId) ?: return@withContext
         setExerciseDone(position.week, position.day, routineCircuit, exerciseId, done)
     }
 
     /** Sets the day-level flag. Deliberately writes no completions, so skipping works. */
     suspend fun markRoutineDone(routineCircuit: Int) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
-        val position = todayPosition(cycleId) ?: return@withContext
+        val position = currentPosition(cycleId) ?: return@withContext
         when (routineCircuit) {
             CIRCUIT_WARMUP -> markWarmUpDone(position.week, position.day)
             CIRCUIT_STRETCH -> markStretchDone(position.week, position.day)
@@ -341,7 +331,7 @@ class TrackerRepository(
             val doneByPosition = dayCountsFrom(circuitCounts)
             val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
-            val current = rules.nextPosition(doneByPosition, closed)
+            val current = rules.nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
             val byDay = circuitCounts.groupBy { Position(it.week, it.day) }
 
             UiState.Ready(
@@ -397,7 +387,7 @@ class TrackerRepository(
                 val doneByPosition = dayCountsFrom(circuitCounts)
                 val closed = dayRows.filter { it.closedAt != null }
                     .map { Position(it.week, it.day) }.toSet()
-                val current = rules.nextPosition(doneByPosition, closed)
+                val current = rules.nextPosition(doneByPosition, dayRows.stretchDonePositions(), closed)
                 val nameById = catalog.associate { it.id to it.name }
                 val byDay = circuitCounts.groupBy { Position(it.week, it.day) }
 

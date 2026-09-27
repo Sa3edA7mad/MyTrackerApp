@@ -141,7 +141,8 @@ class ProgressWithWorkE2eTest : E2eTest() {
         seeDesc("Week 1 day 1, complete")
         seeDesc("Week 1 day 2, 13 of 52")
         see("5/24")
-        see("5 completions") // all 13 tie at 5; the three names shown are any of them
+        see("Band Row · Bicep Curl · Crunch") // all 13 tie at 5; ties break by id
+        see("5 completions")
         see("MOST DONE")
     }
 }

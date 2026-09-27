@@ -220,10 +220,21 @@ interface CompletionDao {
     )
     fun observeCompletionTimes(cycleId: Long, includeRoutines: Boolean = false): Flow<List<Long>>
 
+    /**
+     * Ties are broken by exerciseId rather than left to SQLite. Early in a cycle every
+     * exercise sits on the same count, and without a deterministic tiebreak the "most
+     * done" row reshuffles between reads for no visible reason.
+     *
+     * Deliberately does NOT join `exercises` to sort by program order. There is no foreign
+     * key on `completions.exerciseId`, so a join silently drops any completion whose
+     * catalog row is missing — DaoTest caught exactly that. Alphabetical is less pretty
+     * than program order and strictly safer.
+     */
     @Query(
         """SELECT exerciseId, COUNT(*) AS done FROM completions
            WHERE cycleId = :cycleId AND (:includeRoutines OR circuit >= 1)
-           GROUP BY exerciseId ORDER BY done DESC"""
+           GROUP BY exerciseId
+           ORDER BY done DESC, exerciseId ASC"""
     )
     fun observeTallies(cycleId: Long, includeRoutines: Boolean = false): Flow<List<ExerciseCount>>
 

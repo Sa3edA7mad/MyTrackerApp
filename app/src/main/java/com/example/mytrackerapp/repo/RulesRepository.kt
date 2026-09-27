@@ -158,9 +158,12 @@ class RulesRepository(
             val from = rulesFor(cycleId)
             val to = candidate ?: getDraft()
             val slots = completions.getAllForCycle(cycleId).map { Triple(it.week, it.day, it.circuit) }
-            val closed = days.getForCycle(cycleId).filter { it.closedAt != null }
+            val dayRows = days.getForCycle(cycleId)
+            val closed = dayRows.filter { it.closedAt != null }
                 .map { Position(it.week, it.day) }.toSet()
-            RuleImpact.analyse(from, to, slots, closed)
+            val stretchDone = dayRows.filter { it.stretchDoneAt != null }
+                .map { Position(it.week, it.day) }.toSet()
+            RuleImpact.analyse(from, to, slots, stretchDone, closed)
         }
 
     /** INVARIANT 7/8: re-snapshots [cycleId] from the current draft. Deletes no completions. */

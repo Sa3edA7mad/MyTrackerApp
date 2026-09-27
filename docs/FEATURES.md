@@ -41,7 +41,7 @@ automated test exists, it is named next to the case.
 ./gradlew connectedDebugAndroidTest
 ```
 
-- `testDebugUnitTest`: about 118 JVM tests of the pure domain logic (rules, stats, units). It runs in seconds and needs no device.
+- `testDebugUnitTest`: about 128 JVM tests of the pure domain logic (rules, stats, units). It runs in seconds and needs no device.
 - `connectedDebugAndroidTest`: about 190 on-device tests, about 9 minutes on a Pixel emulator. It covers DAO, migration and
   repository tests, **plus the end-to-end UI suite** in `app/src/androidTest/.../e2e/`. That suite drives the real `MainActivity`
   against the real database and DataStore.
@@ -89,9 +89,8 @@ TOD-02  FAIL     CTA read "START CIRCUIT 1", expected "WARM UP, THEN CIRCUIT 1" 
 | **Program exercise** | An exercise in the `PROGRAM` slot. Every circuit contains all of them (default 13). |
 | **Routine** | Warm-up (8 moves) or stretch (8 stretches). Done once per day, not once per circuit. |
 | **Completion** | One ticked exercise in one circuit on one day. All totals are counts of completions. |
-| **Settled day** | A day where every circuit exercise is done, **or** the day was ended early. Settling moves the counter to the next day. |
+| **Settled day** | A day where every circuit exercise is done **and** its stretch is done or skipped (when stretch is enabled), **or** the day was ended early. Settling moves the counter to the next day. |
 | **Current day** | The first unsettled day. Days after it are **future days**: locked by default, readable as a preview. |
-| **Today's day** | The day the Today screen shows. It's the same as the current day, except that a day whose circuits are finished stays on Today until its stretch is done or skipped (see TOD-06). |
 | **End day early / closed** | Settles a partly done day on purpose. The finished work is kept. |
 | **Draft rules** | The editable rule set (Settings → Program rules). Saving only affects the **next** cycle. |
 | **Snapshot** | The frozen copy of the rules and program composition a cycle runs on. It changes only when you tap `APPLY TO CURRENT CYCLE`. |
@@ -195,14 +194,14 @@ These are the rules behind every number. A regression in any of them is a **P0 d
 |---|---|---|
 | R-1 | Exactly one active cycle always exists. A fresh install opens on W1 D1. | Today |
 | R-2 | By default, warm-up and stretch completions are stored but **never counted** in any day, week or cycle total. The rules toggle *Count warm-up and stretch in totals* changes this. | Today, Program, Progress |
-| R-3 | A day settles when every circuit exercise is done, or when it is ended early. Nothing else moves the counter. Ticking a warm-up alone never settles a day. | Today, Program |
+| R-3 | A day settles when every circuit exercise is done **and** its stretch is done or skipped (stretch only counts while it's enabled in the rules), or when it is ended early. Nothing else moves the counter. Ticking a warm-up alone never settles a day. | Today, Program |
 | R-4 | Days after the current day are **locked**: guided mode shows a read-only preview. List mode can still tick them, and a note says which day the ticks count for. The rules toggle *Lock future days* removes the lock. | Circuit, Program |
 | R-5 | Every total is derived by counting completion rows. Nothing is cached. Ticking the same exercise twice never double-counts. | everywhere |
 | R-6 | Database upgrades never wipe data (no destructive migrations). | upgrade |
 | R-7 | A running cycle uses its **snapshot**: rules, exercises per circuit, and the exact program exercises in order. Editing rules or the catalog only changes the **draft**, until you tap `APPLY TO CURRENT CYCLE`. A new cycle is snapshotted from the draft. | Circuit, Rules |
 | R-8 | Rule edits never delete completions. Rows that no longer fit are orphaned: kept, and excluded from totals. Exercises and metrics are archived, not deleted. **The only hard delete in the app is a measurement reading.** | Rules, Library, Measurements |
 | R-9 | A fresh install and an upgraded install end up with identical rules, snapshots and metrics. | install / upgrade |
-| R-10 | A finished day waits on Today for its stretch. It releases when the stretch is done or skipped, when the day was ended early, or when work starts on the next day. | Today |
+| R-10 | Because of R-3, a day whose circuits are finished stays the current day (Today, Program, warm-up and stretch) until its stretch is done or skipped. Ticking the next day from list view doesn't release it. Ending the day early does. | Today, Program |
 | R-11 | Measurements are stored in kg / cm / %. The unit toggle changes display and input only; stored values never convert. | Measurements, logging |
 | R-12 | At least one program exercise must stay enabled. Archive, disable, and moving it to another slot are all refused with `At least one program exercise must stay enabled.` | Exercise editor |
 | R-13 | Exercise ids never change (renaming keeps history). A new exercise's or metric's id is a slug of its name, de-duplicated (`waist`, then `waist_2`). | Library, Measurements |
@@ -260,11 +259,11 @@ turned off in the rules, its card disappears and it never gates the CTA.
 | TOD-03 | P0 | R1 | CTA `START CIRCUIT 1` | Circuit 1 opens on `Squat` | TodayE2eTest.tod03 |
 | TOD-04 | P0 | R0 | `[desc: End day early]` → read the dialog → `KEEP GOING`; again → `END DAY` | Dialog `End day early?` with body starting `Circuits 1, 2, 3, 4 will stay incomplete, and you'll move on to the next day. Your finished work is kept.`. Keep going changes nothing. End day moves to `WEEK 1 · DAY 2` | TodayE2eTest.tod04 |
 | TOD-05 | P1 | R0 | Tap card `Circuit 2` → `✓  DONE` → `[desc: Close circuit]` | Circuit 2 card shows `1/13`, `51` left today, ring still `0 of 4` | TodayE2eTest.tod05 |
-| TOD-06 | P0 | R1 + R4 | Look at Today after the last circuit | Still `WEEK 1 · DAY 1` (the day is held for its stretch), `[desc: 4 of 4 circuits complete]`, `8 stretches · finish your day`, CTA `FINISH WITH STRETCHING` and `SKIP STRETCHING` | TodayStretchHoldE2eTest.tod06, StretchHoldTest |
+| TOD-06 | P0 | R1 + R4 | Look at Today after the last circuit | Still `WEEK 1 · DAY 1` (the day isn't settled until stretched), `[desc: 4 of 4 circuits complete]`, `8 stretches · finish your day`, CTA `FINISH WITH STRETCHING` and `SKIP STRETCHING`. Program's current-day outline is also still on W1 D1 | TodayStretchHoldE2eTest.tod06, StretchHoldTest, FullCycleTest |
 | TOD-07 | P0 | as TOD-06 | `SKIP STRETCHING` | Moves to `WEEK 1 · DAY 2`, CTA `WARM UP, THEN CIRCUIT 1` | TodayStretchHoldE2eTest.tod07 |
 | TOD-08 | P0 | as TOD-06 | `FINISH WITH STRETCHING` → `SKIP STRETCH` | The stretch screen reads `STRETCH · WEEK 1 DAY 1` (not day 2). Afterwards Today shows `WEEK 1 · DAY 2` | TodayStretchHoldE2eTest.tod08 |
 | TOD-09 | P1 | R0, Rules: warm-up off, stretch off, APPLY | Look at Today | No `WARM-UP` or `STRETCH` cards. CTA `START CIRCUIT 1` | TodayRoutinesOffE2eTest.tod09 |
-| TOD-10 | P2 | R1 + R4 | Program tab → open W1 D2 `Circuit 1` in list mode, tick one exercise → back to Today | The hold is released: Today shows `WEEK 1 · DAY 2` | StretchHoldTest.startingTheNextDayFromProgramReleasesTheHold |
+| TOD-10 | P2 | R1 + R4 | Program tab → open W1 D2 `Circuit 1` in list mode, tick one exercise → back to Today | Today still shows `WEEK 1 · DAY 1` with `FINISH WITH STRETCHING`. Work on a future day never skips the unstretched one | StretchHoldTest.tickingTheNextDayFromTheListDoesNotSkipTheStretch |
 | TOD-11 | P2 | R0 | End day 1 early with 2 circuits done | Not held for stretch. Goes straight to `WEEK 1 · DAY 2` | StretchHoldTest.aDayEndedEarlyIsNotHeld |
 | TOD-12 | P2 | R0 | Advance to week 4 (R5 partially: end 18 days early) | `7 circuits · 13 exercises each`, all 7 cards reachable by scrolling, and the CTA stays visible (sticky) | — |
 
@@ -289,8 +288,8 @@ The flag means "I warmed up". It is not a per-move tally.
 
 Header: `[desc: Close circuit]`, overline `CIRCUIT c · WEEK w DAY d`, position `i/13`, and a segment bar (lime = done).
 The body shows the category chip, the name, muscles, a `SIDE 1` / `SIDE 1 DONE` / `SIDE 2` badge for per-side exercises,
-then either a target circle (`5` `REPS`) or a timer dial. Below that is a `HOW TO` card with the instructions and
-`WATCH FORM VIDEO`. The pager opens on the **first unticked** exercise.
+then either a target circle (`5` `REPS`) or a timer dial. On side 1 of a per-side exercise the primary button reads `DONE · SIDE 1` rather than `✓  DONE`. Below that is a `HOW TO` card with the instructions and
+`WATCH FORM VIDEO`. The pager opens on the **first unticked** exercise, and `✓  DONE` / `SKIP` jump to the next **unticked** one, so exercises ticked in list mode are never offered again.
 
 | ID | P | Pre | Steps | Expected | Auto |
 |---|---|---|---|---|---|
@@ -301,9 +300,10 @@ then either a target circle (`5` `REPS`) or a timer dial. Below that is a `HOW T
 | GUI-05 | P0 | R1, 12 of 13 done in circuit 1 | `START CIRCUIT 1` → `✓  DONE` | Opens on `13/13` `Band Row`. Done closes the circuit by itself, and Today shows `[desc: 1 of 4 circuits complete]` | GuidedCircuitArrangedE2eTest.gui07 |
 | GUI-06 | P1 | R1 | `⇄ CHECKLIST` → close → open card `Circuit 2` | List mode opens for circuit 2 too. Settings: `Guided mode by default` is off (switching mid-circuit changes the default) | GuidedCircuitE2eTest.gui06 |
 | GUI-07 | P0 | R0 | PROGRAM → day square `[desc: Week 1 day 2, not started]` → `Circuit 1` | `CIRCUIT 1 · WEEK 1 DAY 2`, banner `Preview — finish the current day before training this one.`, `✓  DONE` disabled. `SKIP` still browses | LockedDayGuidedE2eTest.gui09 |
-| GUI-08 | P1 | R2, circuit 1 | Tap the name `External Rotation` → `✓  DONE` → `CONTINUE · SIDE 2` → `✓  DONE` | Badge `SIDE 1`, then `SIDE 1 DONE` with `SWITCH SIDES`, then `SIDE 2`. **One** completion is written at the end, and you return to the list | ChecklistE2eTest.lst04 |
+| GUI-08 | P1 | R2, circuit 1 | Tap the name `External Rotation` → `DONE · SIDE 1` → `CONTINUE · SIDE 2` → `✓  DONE` | Badge `SIDE 1` (button `DONE · SIDE 1`), then `SIDE 1 DONE` with `SWITCH SIDES`, then `SIDE 2` (button `✓  DONE`). **One** completion is written at the end, and you return to the list | ChecklistE2eTest.lst04 |
 | GUI-09 | P2 | R1 | Tap `WATCH FORM VIDEO` on Squat | YouTube or the browser opens a search for `Squat` (see MAN-01) | — |
 | GUI-10 | P2 | R1 | Rotate the device mid-circuit | Stays on the same exercise and stage | — |
+| GUI-11 | P1 | R1 + R2, circuit 1: tick `Push-up` and `Dead Hang` in the list | `⇄ GUIDED` (opens on `Squat`) → `SKIP` | Jumps from `1/13` Squat straight to `4/13` `Crunch`, skipping the two ticked exercises | NextUndoneIndexTest (JVM) |
 
 ### TMR: hold timer (timed exercises)
 
@@ -389,10 +389,10 @@ legend `Complete` / `Partial` / `Not yet`), `CIRCUITS PER WEEK` bars (`Week w ·
 | ID | P | Pre | Steps | Expected | Auto |
 |---|---|---|---|---|---|
 | PRS-01 | P0 | R0 | Open PROGRESS | `0`, `0%`, `0`, `4-WEEK MAP`, `[desc: Week 1 day 1, not started]`, `Week 1 · 4/day` `0/24`, `Complete your first circuit to start a streak.` | ProgressEmptyE2eTest.prs01 |
-| PRS-02 | P0 | Day 1 done + stretch skipped + 1 circuit on day 2 | Open PROGRESS | `3%` (65/1716), `65`, `[desc: Week 1 day 1, complete]`, `[desc: Week 1 day 2, 13 of 52]`, `5/24`, `5 completions` | ProgressWithWorkE2eTest.prs03 |
+| PRS-02 | P0 | Day 1 done + stretch skipped + 1 circuit on day 2 | Open PROGRESS | `3%` (65/1716), `65`, `[desc: Week 1 day 1, complete]`, `[desc: Week 1 day 2, 13 of 52]`, `5/24`, `Band Row · Bicep Curl · Crunch`, `5 completions` | ProgressWithWorkE2eTest.prs03 |
 | PRS-03 | P1 | R0 | Tap `Body measurements` | Opens Body measurements (`DERIVED`, `BMI`) | ProgressEmptyE2eTest.prs02 |
 | PRS-04 | P1 | Train on 2 consecutive days | Open PROGRESS | `STREAK` `2`. It stays alive through the next day, and reads `0` once a whole calendar day is missed | StreakTest (JVM) |
-| PRS-05 | P2 | Train on only one day | Open PROGRESS | The top 3 are any three of the tied exercises (ties aren't ordered), with `<n> completions` | ProgramStatsRepositoryTest.mostDoneRanksTheBusiestExercises |
+| PRS-05 | P2 | Complete whole circuits only (every exercise ties) | Open PROGRESS | Ties break by exercise id, so it's always `Band Row · Bicep Curl · Crunch`, and stable across launches | ProgressWithWorkE2eTest.prs03, ProgramStatsRepositoryTest |
 
 ### LIB: Library and exercise detail
 
@@ -548,7 +548,7 @@ program length), a ring `[desc: <p> percent of the cycle completed]` (`<p>%` / `
 | CYC-02 | P0 | as CYC-01 | `SEE CYCLE SUMMARY` | `Four weeks done`, `[desc: 3 percent of the cycle completed]`, `52`, the tiles above, and `… with 23 days ended early. Finished is finished.` | CycleCompleteE2eTest.cyc02 |
 | CYC-03 | P1 | as CYC-01 | Summary → `NOT YET` | Back to the finished Today. The cycle isn't restarted | CycleCompleteE2eTest.cyc03 |
 | CYC-04 | P0 | as CYC-01 | Summary → `START A NEW CYCLE` → PROGRESS | `WEEK 1 · DAY 1`, `0 of 4`, Progress `0%`. The old cycle is kept (and exported) | CycleCompleteE2eTest.cyc04, CycleRestartTest |
-| CYC-05 | P1 | Finish the last day's circuits without stretching | Open Today | The last day is held for its stretch **before** the finished state | ProgramRulesTest (`the last day of the cycle is held…`) |
+| CYC-05 | P1 | Finish the last day's circuits without stretching | Open Today | The last day stays current, waiting for its stretch, **before** the finished state appears | ProgramRulesTest (stretch-gate cases), FullCycleTest |
 | CYC-06 | P2 | A new cycle, after editing the draft rules | Start a new cycle | The new cycle uses the draft (snapshotted at start) | RulesSnapshotTest.aFreshCycleIsSnapshottedFromTheDraftImmediately |
 
 ### INV: data invariants (automated; spot-check manually after risky changes)
@@ -597,7 +597,7 @@ These depend on hardware, other apps or the system UI, so no automated test cove
 
 | Suite | Location | What it covers |
 |---|---|---|
-| JVM unit (118) | `app/src/test` | `ProgramRulesTest` (shape, settling, **todayPosition hold**), `StreakTest`, `RuleValidationTest`, `RuleImpactTest`, `CatalogValidationTest`, `PerformanceStatsTest`, `BodyStatsTest`, `UnitsTest` (incl. locale), `RecentTalliesTest`, `ProgramTotalsTest`, `TargetForWeekTest`, `HoldTimerTest`, `LibraryFilterTest`, `VideoSearchTest`, `WeeksDoneHeadlineTest`, `WithUnitTest` |
+| JVM unit (128) | `app/src/test` | `ProgramRulesTest` (shape, settling, **stretch gate**), `StreakTest`, `NextUndoneIndexTest`, `RuleValidationTest`, `RuleImpactTest`, `CatalogValidationTest`, `PerformanceStatsTest`, `BodyStatsTest`, `UnitsTest` (incl. locale), `RecentTalliesTest`, `ProgramTotalsTest`, `TargetForWeekTest`, `HoldTimerTest`, `LibraryFilterTest`, `VideoSearchTest`, `WeeksDoneHeadlineTest`, `WithUnitTest` |
 | Data and repository (instrumented, 102) | `app/src/androidTest/.../data`, `.../repo` | DAO, migrations, seed, full-cycle walk, routines, stats, rules snapshot/apply/orphans/toggles, catalog CRUD and composition, set detail, measurements, stretch hold |
 | **End-to-end UI** (89) | `app/src/androidTest/.../e2e` | Every screen and flow in §6. Test names start with the case ID (`tod06_…` = TOD-06) |
 
@@ -622,7 +622,7 @@ features rather than clear bugs. A regression run should confirm they're unchang
 | KI-03 | Measurements | Archived metrics can't be restored. The `ARCHIVED` section only lists names. Metric name, kind and order can't be edited after creation. |
 | KI-04 | Catalog | The repository supports reorder, duplicate and restoring the default catalog, but no screen exposes them. |
 | KI-05 | Today | `DAY COMPLETE` (the disabled CTA) is effectively unreachable: once the stretch is done, the day releases and Today moves on. |
-| KI-06 | Program | While Today holds a finished day for its stretch, Program's current-day outline (and future-day locking) is already on the next day. That's intended, because the held day is settled, but the two screens name different days for a moment. |
+| KI-06 | — | Retired. Today and Program now always agree on the current day (see R-3 and R-10). |
 | KI-07 | Rules | Unsaved rule and unit edits are discarded on Back without a prompt. Units are only saved together with the rules. |
 | KI-08 | Library | The `All` and `Program` lists include disabled (not archived) exercises, with no "disabled" marker. |
 | KI-09 | Rules | Today's warm-up and stretch counts ("8 moves") come from the cycle snapshot. Disabling a warm-up move shrinks the routine at once, but the count text only updates after the rules are applied. |
@@ -636,7 +636,7 @@ Each fix has an automated regression test. If any of these IDs fails, a fixed bu
 
 | Bug | Symptom before the fix | Guarded by |
 |---|---|---|
-| Stretch step unreachable | Finishing the last circuit jumped Today to the next day. `FINISH WITH STRETCHING` never appeared, and a stretch was recorded on the wrong day | TOD-06…08, TOD-10, TOD-11, CYC-05, `StretchHoldTest`, `ProgramRulesTest` |
+| Stretch step unreachable | Finishing the last circuit jumped Today to the next day. `FINISH WITH STRETCHING` never appeared, and a stretch was recorded on the wrong day. Fixed on `main` by requiring the stretch to settle a day. This pass added `SKIP STRETCHING` and the UI and repository coverage | TOD-06…08, TOD-10, TOD-11, CYC-05, `StretchHoldTest`, `FullCycleTest`, `ProgramRulesTest` |
 | Today ignored routine rules | Cards always said "8". Disabled warm-up and stretch still showed, and the CTA still sent you to a disabled warm-up. The finished text always said "24 days" | TOD-09, CYC-01 |
 | Circuits uncompletable after archiving | Archiving a program exercise mid-cycle left 12 tickable exercises against a frozen total of 13 | CAT-08, CAT-09, RTN-07, `CircuitCompositionTest` |
 | Hard-coded Program, Progress and summary copy | Always "4 weeks · 6 days a week · 132 circuits", "6 days", "4-week map", "Four weeks done". Program also ignored `Lock future days` and mislabelled previews after a shape change | PRG-07, PRG-08, CYC-02, `WeeksDoneHeadlineTest` |

@@ -7,7 +7,6 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.db.SeedCallback
 import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
-import com.example.mytrackerapp.domain.CIRCUIT_WARMUP
 import com.example.mytrackerapp.domain.model.CircuitView
 import com.example.mytrackerapp.domain.model.DayState
 import com.example.mytrackerapp.domain.model.TodayView
@@ -25,7 +24,9 @@ import org.junit.runner.RunWith
 /**
  * Finishing a day's last circuit used to move Today straight to the next day, so the
  * "Finish with stretching" step was unreachable and a stretch done afterwards landed on the
- * wrong day. Today now holds the finished day until its stretch is done or skipped.
+ * wrong day. A day now settles only once its stretch is done or skipped (INVARIANT 3,
+ * [com.example.mytrackerapp.domain.ProgramRules.isDaySettled]); these check it end to end
+ * through the repository.
  */
 @RunWith(AndroidJUnit4::class)
 class StretchHoldTest {
@@ -72,8 +73,8 @@ class StretchHoldTest {
         assertEquals(1, day.day)
         assertTrue(day.allCircuitsComplete)
         assertTrue(day.stretchPending)
-        // Program's "you are here" still moves on — the day is settled.
-        assertEquals(2, repo.observeCurrentPosition().first()?.day)
+        // Not settled until stretched, so Program's "you are here" stays too.
+        assertEquals(1, repo.observeCurrentPosition().first()?.day)
     }
 
     @Test
@@ -100,12 +101,13 @@ class StretchHoldTest {
     }
 
     @Test
-    fun startingTheNextDayFromProgramReleasesTheHold() = runTest {
+    fun tickingTheNextDayFromTheListDoesNotSkipTheStretch() = runTest {
         finishCircuits(1, 1, 4)
+        // List view can tick a locked future day; that must not settle the unstretched one.
         repo.setExerciseDone(1, 2, 1, programIds.first(), true)
 
-        assertEquals(2, today().day)
-        assertEquals(2, routine(CIRCUIT_WARMUP).day)
+        assertEquals(1, today().day)
+        assertEquals(1, routine(CIRCUIT_STRETCH).day)
     }
 
     @Test
