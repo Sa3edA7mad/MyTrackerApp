@@ -42,7 +42,7 @@ automated test exists, it is named next to the case.
 ```
 
 - `testDebugUnitTest`: about 128 JVM tests of the pure domain logic (rules, stats, units). It runs in seconds and needs no device.
-- `connectedDebugAndroidTest`: about 190 on-device tests, about 9 minutes on a Pixel emulator. It covers DAO, migration and
+- `connectedDebugAndroidTest`: about 200 on-device tests, about 9 minutes on a Pixel emulator. It covers DAO, migration and
   repository tests, **plus the end-to-end UI suite** in `app/src/androidTest/.../e2e/`. That suite drives the real `MainActivity`
   against the real database and DataStore.
 - Run only the UI suite: add `-Pandroid.testInstrumentationRunnerArguments.package=com.example.mytrackerapp.e2e`.
@@ -293,7 +293,7 @@ then either a target circle (`5` `REPS`) or a timer dial. On side 1 of a per-sid
 
 | ID | P | Pre | Steps | Expected | Auto |
 |---|---|---|---|---|---|
-| GUI-01 | P0 | R1 | `START CIRCUIT 1` | `1/13`, `Squat`, chip `BODYWEIGHT`, `5` `REPS`, `HOW TO`, `WATCH FORM VIDEO`, buttons `✓  DONE`, `SKIP`, `⇄ CHECKLIST` | GuidedCircuitE2eTest.gui01 |
+| GUI-01 | P0 | R1 | `START CIRCUIT 1` | `1/13`, `Squat`, chip `BODYWEIGHT`, `5` `REPS`, `HOW TO`, `WATCH FORM VIDEO`, buttons `✓  DONE`, `‹ PREVIOUS` (disabled), `NEXT ›`, `SKIP`, `⇄ CHECKLIST` | GuidedCircuitE2eTest.gui01 |
 | GUI-02 | P0 | R1 | `✓  DONE` → close | Advances to `2/13` `Push-up`. Today: Circuit 1 `1/13`, `51` left | GuidedCircuitE2eTest.gui02 |
 | GUI-03 | P1 | R1 | `SKIP` → close | Advances to `2/13`. Nothing recorded: Circuit 1 `0/13` | GuidedCircuitE2eTest.gui03 |
 | GUI-04 | P1 | R1 | `SKIP` ×13 → dialog → `BACK TO MISSED`; then `SKIP` ×13 → `FINISH ANYWAY` | Dialog `0 of 13 done`, `You skipped 13 exercises. You can go back to them now, or leave this circuit partial and pick it up later.` Back to missed returns to `1/13` Squat. Finish anyway returns to Today | GuidedCircuitE2eTest.gui05 |
@@ -302,6 +302,11 @@ then either a target circle (`5` `REPS`) or a timer dial. On side 1 of a per-sid
 | GUI-07 | P0 | R0 | PROGRAM → day square `[desc: Week 1 day 2, not started]` → `Circuit 1` | `CIRCUIT 1 · WEEK 1 DAY 2`, banner `Preview — finish the current day before training this one.`, `✓  DONE` disabled. `SKIP` still browses | LockedDayGuidedE2eTest.gui09 |
 | GUI-08 | P1 | R2, circuit 1 | Tap the name `External Rotation` → `DONE · SIDE 1` → `CONTINUE · SIDE 2` → `✓  DONE` | Badge `SIDE 1` (button `DONE · SIDE 1`), then `SIDE 1 DONE` with `SWITCH SIDES`, then `SIDE 2` (button `✓  DONE`). **One** completion is written at the end, and you return to the list | ChecklistE2eTest.lst04 |
 | GUI-09 | P2 | R1 | Tap `WATCH FORM VIDEO` on Squat | YouTube or the browser opens a search for `Squat` (see MAN-01) | — |
+| GUI-10 | P1 | R1 | `✓  DONE` → `‹ PREVIOUS` → `NEXT ›` | `‹ PREVIOUS` is disabled on `1/13`. Previous returns to `1/13` `Squat` (even though it's ticked), Next goes back to `2/13` `Push-up`. Nothing extra is recorded. Not shown when a single exercise is opened from list view | GuidedCircuitE2eTest.gui10 |
+| GUI-11 | P1 | R1 | `NEXT ›` ×2 → `START · 15 SEC` → `NEXT ›` → `‹ PREVIOUS` | Back on `Dead Hang` the timer is reset: `START · 15 SEC` again, nothing recorded | GuidedCircuitE2eTest.gui11 |
+| GUI-12 | P1 | R1 | `NEXT ›` to `External Rotation` → `DONE · SIDE 1` → `‹ PREVIOUS` → `NEXT ›` | Back on `External Rotation` at `SIDE 1` with `DONE · SIDE 1` (the side step restarts) | GuidedCircuitE2eTest.gui12 |
+| GUI-13 | P1 | R1 | `NEXT ›` ×12 → `‹ PREVIOUS` → close | `NEXT ›` is disabled on `13/13`; Previous goes to `12/13`. Nothing recorded: Circuit 1 `0/13` | GuidedCircuitE2eTest.gui13 |
+| GUI-14 | P2 | R0 | Preview day (see GUI-07) → `NEXT ›` → `‹ PREVIOUS` | `2/13` then `1/13`: browsing works on a read-only preview | LockedDayGuidedE2eTest.gui09 |
 | GUI-10 | P2 | R1 | Rotate the device mid-circuit | Stays on the same exercise and stage | — |
 | GUI-11 | P1 | R1 + R2, circuit 1: tick `Push-up` and `Dead Hang` in the list | `⇄ GUIDED` (opens on `Squat`) → `SKIP` | Jumps from `1/13` Squat straight to `4/13` `Crunch`, skipping the two ticked exercises | NextUndoneIndexTest (JVM) |
 
@@ -338,6 +343,7 @@ in guided mode, with `BACK TO LIST`), and the play icon `[desc: Watch <name> vid
 | LST-06 | P0 | R2 | PROGRAM → `[desc: Week 1 day 3, not started]` → `Circuit 1` → tick Squat → close | Note `Future day — ticks here count for week 1 day 3.`. The tick is allowed. Program then reads `[desc: Week 1 day 3, 1 of 52]` | ChecklistFutureDayE2eTest.lst09 |
 | LST-07 | P2 | R2 | Double-tap a checkbox quickly | Ends checked or unchecked, never counted twice | DaoTest.doubleTapDoesNotDuplicateACompletion |
 | LST-08 | P2 | `Haptics` on | Tick a row | Vibrates (MAN-04) | — |
+| LST-10 | P1 | R1 | List view → tap `Push-up` | Runs alone: `BACK TO LIST` shows, with no `‹ PREVIOUS` or `NEXT ›` | ChecklistE2eTest.lst10 |
 
 ### LOG: rep and load logging
 
@@ -491,6 +497,19 @@ and `YOUR DATA` (`Export training data`, `Reset current cycle`). All switches de
 | SET-05 | P1 | R0 | Settings → tap Steel glass → kill and relaunch → Settings | Steel glass is still selected; the app is mid-gray with dark text | SettingsE2eTest.set05 |
 | SET-06 | P2 | Match device selected | Toggle the device's dark mode | The app switches between Light charcoal and Pale frost; status-bar icons stay readable | — |
 
+### THM: themes and appearance
+
+Themes are `Light charcoal`, `Steel glass` and `Pale frost`; `Match device` (default) uses charcoal in device dark mode and frost in
+light mode. Automated checks read the median luminance of a screenshot: dark under 0.15, mid 0.18-0.5, light above 0.5.
+
+| ID | P | Pre | Steps | Expected | Auto |
+|---|---|---|---|---|---|
+| THM-01 | P1 | Device light mode | Settings → `Light charcoal` → `Steel glass` → `Pale frost` | The whole app repaints: dark, then mid gray, then light | ThemeE2eTest.thm01 |
+| THM-02 | P1 | `Match device` | Switch the device between dark and light mode | The app follows: charcoal in dark, frost in light | ThemeE2eTest.thm02 |
+| THM-03 | P1 | Device dark mode | Choose `Pale frost`, then flip the device mode both ways | The app stays frost; a manual choice ignores the device | ThemeE2eTest.thm03 |
+| THM-04 | P1 | `Light charcoal` chosen | Kill and relaunch | Still charcoal from the first frame | ThemeE2eTest.thm04 |
+| THM-05 | P2 | Each theme | Open Today, a circuit, Log set sheet, Program, Progress, Library | No near-black areas; text and the accent are readable; status-bar icons contrast | — |
+
 ### DAT: your data (export and reset)
 
 | ID | P | Pre | Steps | Expected | Auto |
@@ -599,9 +618,9 @@ These depend on hardware, other apps or the system UI, so no automated test cove
 
 | Suite | Location | What it covers |
 |---|---|---|
-| JVM unit (128) | `app/src/test` | `ProgramRulesTest` (shape, settling, **stretch gate**), `StreakTest`, `NextUndoneIndexTest`, `RuleValidationTest`, `RuleImpactTest`, `CatalogValidationTest`, `PerformanceStatsTest`, `BodyStatsTest`, `UnitsTest` (incl. locale), `RecentTalliesTest`, `ProgramTotalsTest`, `TargetForWeekTest`, `HoldTimerTest`, `LibraryFilterTest`, `VideoSearchTest`, `WeeksDoneHeadlineTest`, `WithUnitTest` |
+| JVM unit (128) | `app/src/test` | `ProgramRulesTest` (shape, settling, **stretch gate**), `StreakTest`, `NextUndoneIndexTest`, `RuleValidationTest`, `RuleImpactTest`, `CatalogValidationTest`, `PerformanceStatsTest`, `BodyStatsTest`, `UnitsTest` (incl. locale), `RecentTalliesTest`, `ProgramTotalsTest`, `TargetForWeekTest`, `HoldTimerTest`, `LibraryFilterTest`, `VideoSearchTest`, `WeeksDoneHeadlineTest`, `WithUnitTest`, `PaletteContrastTest` |
 | Data and repository (instrumented, 102) | `app/src/androidTest/.../data`, `.../repo` | DAO, migrations, seed, full-cycle walk, routines, stats, rules snapshot/apply/orphans/toggles, catalog CRUD and composition, set detail, measurements, stretch hold |
-| **End-to-end UI** (89) | `app/src/androidTest/.../e2e` | Every screen and flow in §6. Test names start with the case ID (`tod06_…` = TOD-06) |
+| **End-to-end UI** (99) | `app/src/androidTest/.../e2e` | Every screen and flow in §6. Test names start with the case ID (`tod06_…` = TOD-06) |
 
 **How the UI suite works** (`E2eTest` base class):
 - Before each test it clears and re-seeds the real database and resets every setting. Then it runs the test's

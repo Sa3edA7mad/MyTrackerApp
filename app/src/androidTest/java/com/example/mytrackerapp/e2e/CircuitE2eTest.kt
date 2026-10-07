@@ -55,6 +55,64 @@ class GuidedCircuitE2eTest : E2eTest() {
     }
 
     @Test
+    fun gui10_previousAndNextStepThroughExercisesIncludingDoneOnes() {
+        openCircuitOne()
+        button("‹ Previous").assertIsNotEnabled()
+        tapButton("✓  Done")
+        see("2/13")
+        tapButton("‹ Previous")
+        see("1/13")
+        see("Squat")
+        tapButton("Next ›")
+        see("2/13")
+        see("Push-up")
+        tapDesc("Close circuit")
+        see("1/13")
+    }
+
+    @Test
+    fun gui11_steppingAwayFromAHoldResetsItsTimer() {
+        openCircuitOne()
+        tapButton("Next ›")
+        tapButton("Next ›")
+        see("Dead Hang")
+        tapButton("Start · 15 sec")
+        seeButton("❚❚ Pause")
+        tapButton("Next ›")
+        see("Crunch")
+        tapButton("‹ Previous")
+        see("Dead Hang")
+        seeButton("Start · 15 sec")
+    }
+
+    @Test
+    fun gui12_steppingAwayFromASideRestartsItAtSideOne() {
+        openCircuitOne()
+        repeat(12) { if (runCatching { waitFor(hasText("External Rotation"), 500) }.isFailure) tapButton("Next ›") }
+        see("External Rotation")
+        see("SIDE 1")
+        tapButton("Done · side 1")
+        see("SIDE 1 DONE")
+        tapButton("‹ Previous")
+        tapButton("Next ›")
+        see("External Rotation")
+        see("SIDE 1")
+        seeButton("Done · side 1")
+    }
+
+    @Test
+    fun gui13_nextWalksToTheEndWithoutRecordingAnything() {
+        openCircuitOne()
+        repeat(12) { tapButton("Next ›") }
+        see("13/13")
+        button("Next ›").assertIsNotEnabled()
+        tapButton("‹ Previous")
+        see("12/13")
+        tapDesc("Close circuit")
+        see("0/13")
+    }
+
+    @Test
     fun gui04_timedExerciseHasAStartPauseResetTimer() {
         openCircuitOne()
         tapButton("Skip")
@@ -148,6 +206,10 @@ class LockedDayGuidedE2eTest : E2eTest() {
         tapText("Circuit 1")
         see("CIRCUIT 1 · WEEK 1 DAY 2")
         see("Preview — finish the current day before training this one.")
+        tapButton("Next ›")
+        see("2/13")
+        tapButton("‹ Previous")
+        see("1/13")
         button("✓  Done").assertIsNotEnabled()
     }
 }

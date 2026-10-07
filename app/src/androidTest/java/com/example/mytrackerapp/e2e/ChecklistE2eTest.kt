@@ -79,6 +79,15 @@ class ChecklistE2eTest : E2eTest() {
     }
 
     @Test
+    fun lst10_aSingleExerciseHasNoPreviousOrNext() {
+        openCircuitOne()
+        tapText("Push-up")
+        seeButton("Back to list")
+        dontSee("NEXT ›")
+        dontSee("‹ PREVIOUS")
+    }
+
+    @Test
     fun lst05_backFromASingleExerciseReturnsToTheList() {
         openCircuitOne()
         tapText("Push-up")
