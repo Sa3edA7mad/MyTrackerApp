@@ -62,6 +62,7 @@ import com.example.mytrackerapp.ui.theme.TextTertiary
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 class ProgressViewModel(repo: TrackerRepository) : ViewModel() {
 
@@ -101,7 +102,7 @@ fun ProgressScreen(stats: CycleStats, onOpenMeasure: () -> Unit = {}) {
     Column(
         Modifier
             .fillMaxSize()
-            .background(CanvasColor)
+            .glassBackdrop()
             .verticalScroll(rememberScrollState())
             .padding(horizontal = Spacing.lg)
     ) {
@@ -337,13 +338,13 @@ private fun previewStats(empty: Boolean): CycleStats {
     )
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun ProgressPreview() {
     MyTrackerAppTheme { ProgressScreen(previewStats(empty = false)) }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun ProgressEmptyPreview() {
     MyTrackerAppTheme { ProgressScreen(previewStats(empty = true)) }

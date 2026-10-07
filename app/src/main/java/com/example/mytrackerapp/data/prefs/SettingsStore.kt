@@ -5,11 +5,15 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(name = "settings")
+
+/** Appearance choice. SYSTEM follows the device's dark/light mode. Stored by name. */
+enum class ThemeMode { SYSTEM, CHARCOAL, STEEL, FROST }
 
 data class Settings(
     /** Guided pager vs. flat checklist. Switching mid-circuit updates this default. */
@@ -21,7 +25,8 @@ data class Settings(
      */
     val soundCues: Boolean = true,
     val keepScreenOn: Boolean = true,
-    val autoAdvanceTimer: Boolean = true
+    val autoAdvanceTimer: Boolean = true,
+    val themeMode: ThemeMode = ThemeMode.SYSTEM
 )
 
 class SettingsStore(private val context: Context) {
@@ -32,6 +37,7 @@ class SettingsStore(private val context: Context) {
         val soundCues = booleanPreferencesKey("sound_cues")
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
         val autoAdvanceTimer = booleanPreferencesKey("auto_advance_timer")
+        val themeMode = stringPreferencesKey("theme_mode")
     }
 
     val settings: Flow<Settings> = context.settingsDataStore.data.map { p ->
@@ -41,7 +47,9 @@ class SettingsStore(private val context: Context) {
             haptics = p[Keys.haptics] ?: defaults.haptics,
             soundCues = p[Keys.soundCues] ?: defaults.soundCues,
             keepScreenOn = p[Keys.keepScreenOn] ?: defaults.keepScreenOn,
-            autoAdvanceTimer = p[Keys.autoAdvanceTimer] ?: defaults.autoAdvanceTimer
+            autoAdvanceTimer = p[Keys.autoAdvanceTimer] ?: defaults.autoAdvanceTimer,
+            themeMode = p[Keys.themeMode]?.let { name -> ThemeMode.entries.firstOrNull { it.name == name } }
+                ?: defaults.themeMode
         )
     }
 
@@ -50,6 +58,10 @@ class SettingsStore(private val context: Context) {
     suspend fun setSoundCues(value: Boolean) = put(Keys.soundCues, value)
     suspend fun setKeepScreenOn(value: Boolean) = put(Keys.keepScreenOn, value)
     suspend fun setAutoAdvanceTimer(value: Boolean) = put(Keys.autoAdvanceTimer, value)
+
+    suspend fun setThemeMode(value: ThemeMode) {
+        context.settingsDataStore.edit { it[Keys.themeMode] = value.name }
+    }
 
     private suspend fun put(key: Preferences.Key<Boolean>, value: Boolean) {
         context.settingsDataStore.edit { it[key] = value }

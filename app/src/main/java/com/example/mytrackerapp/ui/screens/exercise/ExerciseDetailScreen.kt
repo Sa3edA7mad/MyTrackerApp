@@ -83,6 +83,8 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import androidx.compose.ui.graphics.Color
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 class ExerciseDetailViewModel(
     repo: TrackerRepository,
@@ -159,7 +161,8 @@ fun ExerciseDetailScreen(
     val scope = rememberCoroutineScope()
 
     Scaffold(
-        containerColor = CanvasColor,
+        modifier = Modifier.glassBackdrop(),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbars) }
     ) { inner ->
         Column(
@@ -421,7 +424,7 @@ private fun Sparkline(tallies: List<DayTally>, maxCount: Int) {
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun ExerciseDetailPreview() {
     val today = LocalDate.of(2026, 9, 16)

@@ -78,6 +78,7 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 data class MetricHistoryState(
     val metric: Metric?,
@@ -171,7 +172,7 @@ fun MetricHistoryScreen(
     var deleting by remember { mutableStateOf<MeasurementEntry?>(null) }
     val unitLabel = metric.unit(units)
 
-    Column(Modifier.fillMaxSize().background(CanvasColor).padding(horizontal = Spacing.lg)) {
+    Column(Modifier.fillMaxSize().glassBackdrop().padding(horizontal = Spacing.lg)) {
         Row(
             Modifier.fillMaxWidth().padding(top = Spacing.sm),
             verticalAlignment = Alignment.CenterVertically
@@ -349,7 +350,7 @@ private fun EditEntryDialog(
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun MetricHistoryPreview() {
     val now = System.currentTimeMillis()

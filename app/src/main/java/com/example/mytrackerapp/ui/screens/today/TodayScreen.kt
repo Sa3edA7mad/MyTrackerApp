@@ -69,6 +69,7 @@ import com.example.mytrackerapp.ui.theme.Surface as SurfaceColor
 import com.example.mytrackerapp.ui.theme.TextPrimary
 import com.example.mytrackerapp.ui.theme.TextSecondary
 import com.example.mytrackerapp.ui.theme.TextTertiary
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 @Composable
 fun TodayRoute(
@@ -445,22 +446,22 @@ private fun previewDay(week: Int = 2, done: List<Int> = listOf(13, 13, 13, 0, 0)
     exercisesPerCircuit = 13
 )
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun TodayPreview() {
     MyTrackerAppTheme {
-        Box(Modifier.background(CanvasColor)) {
+        Box(Modifier.glassBackdrop()) {
             TodayScreen(previewDay(), {}, {}, {}, {})
         }
     }
 }
 
 /** Week 4 has seven circuits — this is the case that pushed the CTA off screen in v1. */
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun TodayWeekFourPreview() {
     MyTrackerAppTheme {
-        Box(Modifier.background(CanvasColor)) {
+        Box(Modifier.glassBackdrop()) {
             TodayScreen(previewDay(week = 4, done = listOf(13, 13, 0, 0, 0, 0, 0)), {}, {}, {}, {})
         }
     }

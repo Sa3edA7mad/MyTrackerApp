@@ -1,44 +1,141 @@
 package com.example.mytrackerapp.ui.theme
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.Immutable
+import androidx.compose.runtime.ReadOnlyComposable
+import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.graphics.Color
 
 /**
- * "Dark Athletic" palette.
+ * Three "glass gray" palettes. Contrast is enforced by PaletteContrastTest:
+ * every text token >= 4.5:1 on canvas, surface and canvas+glow; category hues >= 4.5:1 on
+ * surface (where chips and badges sit); onAccent >= 4.5:1 on accent.
  *
- * Contrast ratios were computed with the WCAG 2.x relative-luminance formula.
- * Lime [Accent] is reserved exclusively for completion and primary action so the
- * category hues never compete with it, and every category color is always paired
+ * Accent is reserved for completion and primary action; category hues are always paired
  * with a text label — color alone never carries meaning.
  */
+@Immutable
+data class TrackerPalette(
+    /** True for palettes with dark text — drives status-bar icon color and the M3 scheme. */
+    val isLight: Boolean,
+    val canvas: Color,        // app background
+    val surface: Color,       // cards, sheets, bottom bars
+    val surfaceHigh: Color,   // selected rows, badges, progress track
+    val outline: Color,       // hairlines (the "glass edge")
+    val outlineStrong: Color, // unchecked checkbox / switch border
+    val accent: Color,        // done / primary CTA
+    val accentPressed: Color,
+    val accentMuted: Color,   // faint bar fills — NOT for text
+    val onAccent: Color,
+    val textPrimary: Color,
+    val textSecondary: Color,
+    val textTertiary: Color,  // smallest allowed text color
+    /** MUST NEVER RENDER TEXT — borders/fills only. Use textTertiary for faint text. */
+    val textDisabled: Color,
+    val catBodyweight: Color,
+    val catBand: Color,
+    val catWarmUp: Color,
+    val catStretch: Color,
+    val danger: Color,
+    val heatPartial: Color,   // heatmap fill only, never text
+    val glowA: Color,         // ambient blob, top-right (translucent)
+    val glowB: Color          // ambient blob, bottom-left (translucent)
+)
 
-val Canvas = Color(0xFF0B0D0C)        // app background
-val Surface = Color(0xFF16191A)       // cards, sheets
-val SurfaceHigh = Color(0xFF212526)   // selected rows, badges, progress track
-val Outline = Color(0xFF2E3435)       // hairlines
-val OutlineStrong = Color(0xFF414A4B) // unchecked checkbox border
+val CharcoalPalette = TrackerPalette(
+    isLight = false,
+    canvas = Color(0xFF4A5052),
+    surface = Color(0xFF545B5E),
+    surfaceHigh = Color(0xFF5F676A),
+    outline = Color(0xFF7A8386),
+    outlineStrong = Color(0xFFA9B2B5),
+    accent = Color(0xFFC8FF3D),
+    accentPressed = Color(0xFFA8DC28),
+    accentMuted = Color(0xFF627834),
+    onAccent = Color(0xFF1A1E1F),
+    textPrimary = Color(0xFFF7F9F8),
+    textSecondary = Color(0xFFE3E8E6),
+    textTertiary = Color(0xFFD2D9D6),
+    textDisabled = Color(0xFF838C8F),
+    catBodyweight = Color(0xFF8FF5DE),
+    catBand = Color(0xFFFFCDB2),
+    catWarmUp = Color(0xFFBED7FF),
+    catStretch = Color(0xFFD9CCFF),
+    danger = Color(0xFFFFCACA),
+    heatPartial = Color(0xFF7D9A3A),
+    glowA = Color(0x247E9A55),
+    glowB = Color(0x245F7F92)
+)
 
-val Accent = Color(0xFFC8FF3D)        // done / primary CTA    16.6:1 on Canvas
-val AccentPressed = Color(0xFFA8DC28)
-val AccentMuted = Color(0xFF3A4A14)   // faint bar fills — NOT for text
-val OnAccent = Color(0xFF0B0D0C)      // 16.6:1 on Accent
+val SteelPalette = TrackerPalette(
+    isLight = true,
+    canvas = Color(0xFF8A9294),
+    surface = Color(0xFFA3AAAC),
+    surfaceHigh = Color(0xFFB6BCBE),
+    outline = Color(0xFFC9CED0),
+    outlineStrong = Color(0xFF3A4143),
+    accent = Color(0xFF16190F),
+    accentPressed = Color(0xFF2A2F1E),
+    accentMuted = Color(0xFF6F7A5E),
+    onAccent = Color(0xFFC8FF3D),
+    textPrimary = Color(0xFF0B0D0E),
+    textSecondary = Color(0xFF191D1E),
+    textTertiary = Color(0xFF23282A),
+    textDisabled = Color(0xFF6C7476),
+    catBodyweight = Color(0xFF063F33),
+    catBand = Color(0xFF5A2205),
+    catWarmUp = Color(0xFF0F2F66),
+    catStretch = Color(0xFF371F7A),
+    danger = Color(0xFF4A0505),
+    heatPartial = Color(0xFF5A6644),
+    glowA = Color(0x73D5E0E4),
+    glowB = Color(0x4DB7C79A)
+)
 
-val TextPrimary = Color(0xFFF2F5F3)   // 17.8:1 on Canvas
-val TextSecondary = Color(0xFFA2ABA8) //  8.3:1
-val TextTertiary = Color(0xFF7C8784)  //  5.3:1 — smallest allowed text color
+val FrostPalette = TrackerPalette(
+    isLight = true,
+    canvas = Color(0xFFD6DADB),
+    surface = Color(0xFFEBEDEE),
+    surfaceHigh = Color(0xFFD0D6D8),
+    outline = Color(0xFFC3C9CB),
+    outlineStrong = Color(0xFF6B7477),
+    accent = Color(0xFF356000),
+    accentPressed = Color(0xFF2A4C00),
+    accentMuted = Color(0xFFB9CC94),
+    onAccent = Color(0xFFFFFFFF),
+    textPrimary = Color(0xFF101314),
+    textSecondary = Color(0xFF3A4143),
+    textTertiary = Color(0xFF4E5659),
+    textDisabled = Color(0xFFA9B0B2),
+    catBodyweight = Color(0xFF0A6452),
+    catBand = Color(0xFF943F0D),
+    catWarmUp = Color(0xFF1F57B3),
+    catStretch = Color(0xFF5B3FB8),
+    danger = Color(0xFFA8231B),
+    heatPartial = Color(0xFF9DBB6A),
+    glowA = Color(0x73C8E29A),
+    glowB = Color(0x80C9DDEA)
+)
 
-/**
- * 2.5:1 — fails AA body (4.5:1) AND AA large (3:1).
- *
- * MUST NEVER RENDER TEXT. Permitted only for non-informational fills and borders,
- * e.g. a disabled checkbox outline. If you need faint text, use [TextTertiary].
- */
-val TextDisabled = Color(0xFF4A5452)
+val LocalTrackerPalette = staticCompositionLocalOf { CharcoalPalette }
 
-// Category hues, measured on Surface (#16191A) where chips and badges actually sit.
-val CatBodyweight = Color(0xFF5BE1C4) // 11.0:1
-val CatBand = Color(0xFFFF8A4C)       //  7.6:1
-val CatWarmUp = Color(0xFF6EA8FF)     //  7.3:1
-val CatStretch = Color(0xFFA88BFF)    //  6.6:1
-
-val Danger = Color(0xFFFF5C5C)        //  6.4:1 on Canvas
-val HeatPartial = Color(0xFF5C7A1C)   // heatmap fill only, never text
+// Legacy names, kept so no screen import changes. Each reads the active palette.
+val Canvas: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.canvas
+val Surface: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.surface
+val SurfaceHigh: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.surfaceHigh
+val Outline: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.outline
+val OutlineStrong: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.outlineStrong
+val Accent: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.accent
+val AccentPressed: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.accentPressed
+val AccentMuted: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.accentMuted
+val OnAccent: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.onAccent
+val TextPrimary: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.textPrimary
+val TextSecondary: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.textSecondary
+val TextTertiary: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.textTertiary
+val TextDisabled: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.textDisabled
+val CatBodyweight: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.catBodyweight
+val CatBand: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.catBand
+val CatWarmUp: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.catWarmUp
+val CatStretch: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.catStretch
+val Danger: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.danger
+val HeatPartial: Color @Composable @ReadOnlyComposable get() = LocalTrackerPalette.current.heatPartial

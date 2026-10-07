@@ -149,6 +149,15 @@ fun GuidedPager(
         }
     }
 
+    /** Manual step to the previous/next exercise, ticked or not. Restarts that exercise's stage. */
+    fun step(delta: Int) {
+        val target = index + delta
+        if (target in view.exercises.indices) {
+            index = target
+            stage = STAGE_FIRST
+        }
+    }
+
     fun advance() {
         if (!view.editable) return
         if (exercise.perSide) {
@@ -193,6 +202,27 @@ fun GuidedPager(
             current = index,
             modifier = Modifier.padding(horizontal = Spacing.lg)
         )
+        if (!singleExercise) {
+            Row(
+                Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = Spacing.lg, vertical = Spacing.sm),
+                horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+            ) {
+                GhostButton(
+                    "‹ Previous",
+                    onClick = { step(-1) },
+                    modifier = Modifier.weight(1f),
+                    enabled = index > 0
+                )
+                GhostButton(
+                    "Next ›",
+                    onClick = { step(1) },
+                    modifier = Modifier.weight(1f),
+                    enabled = index < view.exercises.lastIndex
+                )
+            }
+        }
 
         Column(
             Modifier

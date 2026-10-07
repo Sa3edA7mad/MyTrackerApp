@@ -1,6 +1,8 @@
 package com.example.mytrackerapp.e2e
 
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsNotSelected
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertIsOff
 import androidx.compose.ui.test.assertIsOn
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -155,6 +157,10 @@ class SettingsE2eTest : E2eTest() {
         see("Haptics")
         see("Export training data")
         see("Reset current cycle")
+        see("Match device")
+        see("Light charcoal")
+        see("Steel glass")
+        see("Pale frost")
     }
 
     @Test
@@ -168,6 +174,18 @@ class SettingsE2eTest : E2eTest() {
         tapDesc("Settings")
         text("Haptics").assertIsOff()
         text("Timer auto-advance").assertIsOff()
+    }
+
+    @Test
+    fun set05_themeChoiceSurvivesARelaunch() {
+        tapDesc("Settings")
+        text("Match device", substring = true).assertIsSelected()
+        tapText("Steel glass")
+        text("Steel glass", substring = true).assertIsSelected()
+        text("Match device", substring = true).assertIsNotSelected()
+        relaunch()
+        tapDesc("Settings")
+        text("Steel glass", substring = true).assertIsSelected()
     }
 
     @Test

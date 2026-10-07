@@ -49,6 +49,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 class CycleCompleteViewModel(private val repo: TrackerRepository) : ViewModel() {
 
@@ -105,7 +106,7 @@ fun CycleCompleteScreen(
     onStartNewCycle: () -> Unit,
     onBack: () -> Unit
 ) {
-    Column(Modifier.fillMaxSize().background(CanvasColor)) {
+    Column(Modifier.fillMaxSize().glassBackdrop()) {
         Column(
             Modifier
                 .weight(1f)
@@ -205,7 +206,7 @@ internal fun weeksDoneHeadline(weeks: Int): String {
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun CycleCompletePerfectPreview() {
     MyTrackerAppTheme {
@@ -220,7 +221,7 @@ private fun CycleCompletePerfectPreview() {
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun CycleCompletePartialPreview() {
     MyTrackerAppTheme {

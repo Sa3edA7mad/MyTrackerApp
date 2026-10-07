@@ -77,6 +77,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 /** Case-insensitive match on name or muscles. Pure so it can be unit-tested. */
 fun filterCatalog(catalog: List<Exercise>, query: String): List<Exercise> {
@@ -169,7 +170,7 @@ fun LibraryScreen(
     val grouped = exercises.groupBy { it.category }
     val order = listOf(Category.BODYWEIGHT, Category.BAND, Category.WARMUP, Category.STRETCH)
 
-    Column(Modifier.fillMaxSize().background(CanvasColor)) {
+    Column(Modifier.fillMaxSize().glassBackdrop()) {
         Column(Modifier.padding(horizontal = Spacing.lg)) {
             Spacer(Modifier.height(Spacing.sm))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -334,7 +335,7 @@ private fun CatalogRow(exercise: Exercise, onClick: () -> Unit) {
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun LibraryPreview() {
     MyTrackerAppTheme {
