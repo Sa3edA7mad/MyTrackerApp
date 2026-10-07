@@ -66,6 +66,26 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.time.LocalDate
+import androidx.compose.ui.graphics.Color
+import com.example.mytrackerapp.ui.theme.glassBackdrop
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.selection.selectableGroup
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.shape.RoundedCornerShape
+import com.example.mytrackerapp.data.prefs.ThemeMode
+import com.example.mytrackerapp.ui.theme.TrackerPalette
+import com.example.mytrackerapp.ui.theme.CharcoalPalette
+import com.example.mytrackerapp.ui.theme.SteelPalette
+import com.example.mytrackerapp.ui.theme.FrostPalette
+import com.example.mytrackerapp.ui.theme.Radius
+import com.example.mytrackerapp.ui.theme.Outline
+import com.example.mytrackerapp.ui.theme.OutlineStrong
+import com.example.mytrackerapp.ui.theme.Accent
 
 class SettingsViewModel(
     private val repo: TrackerRepository,
@@ -80,6 +100,7 @@ class SettingsViewModel(
     fun setSoundCues(v: Boolean) = viewModelScope.launch { store.setSoundCues(v) }
     fun setKeepScreenOn(v: Boolean) = viewModelScope.launch { store.setKeepScreenOn(v) }
     fun setAutoAdvance(v: Boolean) = viewModelScope.launch { store.setAutoAdvanceTimer(v) }
+    fun setThemeMode(v: ThemeMode) = viewModelScope.launch { store.setThemeMode(v) }
 
     fun resetCycle() = viewModelScope.launch { repo.resetActiveCycle() }
 
@@ -145,6 +166,7 @@ fun SettingsRoute(
         onSound = viewModel::setSoundCues,
         onKeepAwake = viewModel::setKeepScreenOn,
         onAutoAdvance = viewModel::setAutoAdvance,
+        onThemeMode = viewModel::setThemeMode,
         onExport = { exportLauncher.launch("mytracker-export-${LocalDate.now()}.json") },
         onResetCycle = { viewModel.resetCycle() }
     )
@@ -162,13 +184,15 @@ fun SettingsScreen(
     onSound: (Boolean) -> Unit,
     onKeepAwake: (Boolean) -> Unit,
     onAutoAdvance: (Boolean) -> Unit,
+    onThemeMode: (ThemeMode) -> Unit,
     onExport: () -> Unit,
     onResetCycle: () -> Unit
 ) {
     var confirmReset by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = CanvasColor,
+        modifier = Modifier.glassBackdrop(),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbars) }
     ) { inner ->
         Column(
@@ -193,6 +217,17 @@ fun SettingsScreen(
                 )
             }
             Text("Settings", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
+
+            SectionHeader("Appearance")
+            Column(Modifier.selectableGroup()) {
+                themeOptions.forEach { option ->
+                    ThemeOptionRow(
+                        option,
+                        selected = settings.themeMode == option.mode,
+                        onClick = { onThemeMode(option.mode) }
+                    )
+                }
+            }
 
             SectionHeader("Program")
             ActionRow(
@@ -273,9 +308,61 @@ fun SettingsScreen(
     }
 }
 
+private data class ThemeOption(
+    val mode: ThemeMode,
+    val title: String,
+    val subtitle: String,
+    val left: TrackerPalette,
+    val right: TrackerPalette
+)
+
+private val themeOptions = listOf(
+    ThemeOption(ThemeMode.SYSTEM, "Match device", "Light charcoal in dark mode, pale frost in light mode", CharcoalPalette, FrostPalette),
+    ThemeOption(ThemeMode.CHARCOAL, "Light charcoal", "Soft dark gray with the lime accent", CharcoalPalette, CharcoalPalette),
+    ThemeOption(ThemeMode.STEEL, "Steel glass", "Mid-gray glass with dark text", SteelPalette, SteelPalette),
+    ThemeOption(ThemeMode.FROST, "Pale frost", "Light frosted glass with dark text", FrostPalette, FrostPalette)
+)
+
+@Composable
+private fun ThemeOptionRow(option: ThemeOption, selected: Boolean, onClick: () -> Unit) {
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .heightIn(min = MinTouchTarget)
+            .clip(RoundedCornerShape(Radius.md))
+            .selectable(selected = selected, role = Role.RadioButton, onClick = onClick)
+            .padding(vertical = Spacing.md),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(Spacing.md)
+    ) {
+        // Swatch: each half is that palette's canvas; the dot is the right-hand palette's accent.
+        Box(
+            Modifier.size(32.dp).clip(CircleShape).border(1.dp, Outline, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Row(Modifier.fillMaxSize()) {
+                Box(Modifier.weight(1f).fillMaxHeight().background(option.left.canvas))
+                Box(Modifier.weight(1f).fillMaxHeight().background(option.right.canvas))
+            }
+            Box(Modifier.size(10.dp).clip(CircleShape).background(option.right.accent))
+        }
+        Column(Modifier.weight(1f)) {
+            Text(option.title, style = MaterialTheme.typography.titleMedium, color = TextPrimary)
+            Text(option.subtitle, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+        }
+        Box(
+            Modifier.size(22.dp).clip(CircleShape)
+                .border(2.dp, if (selected) Accent else OutlineStrong, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            if (selected) Box(Modifier.size(10.dp).clip(CircleShape).background(Accent))
+        }
+    }
+}
+
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun SettingsPreview() {
     MyTrackerAppTheme {
@@ -283,7 +370,7 @@ private fun SettingsPreview() {
             settings = Settings(),
             snackbars = remember { SnackbarHostState() },
             onBack = {}, onOpenRules = {}, onOpenMeasure = {}, onGuided = {}, onHaptics = {}, onSound = {},
-            onKeepAwake = {}, onAutoAdvance = {}, onExport = {}, onResetCycle = {}
+            onKeepAwake = {}, onAutoAdvance = {}, onThemeMode = {}, onExport = {}, onResetCycle = {}
         )
     }
 }

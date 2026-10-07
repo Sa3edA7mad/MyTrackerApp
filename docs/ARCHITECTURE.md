@@ -128,11 +128,14 @@ the draft is explicitly applied to it via `RulesRepository.applyDraftToCycle`.
 
 ## Design system
 
-Dark-only, flat (no gradients or shadows — depth comes from surface steps and 1dp
-outlines). Full token list in `ui/theme/Color.kt`, `Type.kt`, `Spacing.kt`.
+Three palettes (`CharcoalPalette`, `SteelPalette`, `FrostPalette` in `ui/theme/Color.kt`) are
+provided through `LocalTrackerPalette`; the legacy color names (`Canvas`, `Accent`, …) are composable
+getters that read the active palette. The user picks one in Settings → Appearance (`ThemeMode` in
+`SettingsStore`); **Match device** maps dark mode to charcoal and light mode to frost. Depth comes
+from surface steps, hairlines and `Modifier.glassBackdrop()` (two radial glows, no real blur).
+Contrast is enforced by `PaletteContrastTest`. Colors must be read in a composable, never inside a
+`Canvas {}`/`drawBehind {}` lambda: hoist them into a local `val` first.
 
-- **Canvas** `#0B0D0C`, **Surface** `#16191A`, **Accent** (lime) `#C8FF3D` — reserved
-  exclusively for completion and primary actions.
 - Category colors (bodyweight/band/warm-up/stretch) are always paired with a text
   label; color alone never carries meaning.
 - All type styles use tabular figures (`FontFeatureSettings = "tnum"`) so numeric

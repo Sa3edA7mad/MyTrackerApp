@@ -80,6 +80,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 data class CatalogEditState(
     val id: String? = null,
@@ -281,7 +282,8 @@ fun CatalogEditScreen(
     var confirmArchive by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = CanvasColor,
+        modifier = Modifier.glassBackdrop(),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbars) }
     ) { inner ->
         Column(Modifier.padding(inner).fillMaxSize()) {
@@ -517,7 +519,7 @@ private fun ChoiceRow(options: List<String>, selected: Int, onSelect: (Int) -> U
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 900)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 900)
 @Composable
 private fun CatalogEditNewPreview() {
     MyTrackerAppTheme {
@@ -534,7 +536,7 @@ private fun CatalogEditNewPreview() {
     }
 }
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 900)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 900)
 @Composable
 private fun CatalogEditExistingPreview() {
     MyTrackerAppTheme {

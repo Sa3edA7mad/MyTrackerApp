@@ -1,14 +1,9 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-
-    <!--
-        Parent is the dark Material theme, not .Light. — with the light parent the
-        launch window flashes white before Compose draws the near-black canvas.
-    -->
-    <style name="Theme.MyTrackerApp" parent="android:Theme.Material.NoActionBar">
-        <item name="android:windowBackground">#FF0B0D0C</item>
+    <!-- Light device mode resolves to Pale frost by default; match its canvas so launch doesn't flash. -->
+    <style name="Theme.MyTrackerApp" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:windowBackground">#FFD6DADB</item>
         <item name="android:statusBarColor">@android:color/transparent</item>
         <item name="android:navigationBarColor">@android:color/transparent</item>
     </style>
-
 </resources>

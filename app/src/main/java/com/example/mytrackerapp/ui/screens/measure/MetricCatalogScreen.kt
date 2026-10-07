@@ -265,7 +265,7 @@ private fun CreateMetricSheet(
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 900)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 900)
 @Composable
 private fun MetricCatalogPreview() {
     MyTrackerAppTheme {

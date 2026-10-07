@@ -32,6 +32,7 @@ import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -77,11 +78,12 @@ import com.example.mytrackerapp.ui.theme.TextDisabled
 import com.example.mytrackerapp.ui.theme.TextPrimary
 import com.example.mytrackerapp.ui.theme.TextSecondary
 import com.example.mytrackerapp.ui.theme.TextTertiary
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 /* ------------------------------------------------------------------ category */
 
 val Category.accent: Color
-    get() = when (this) {
+    @Composable @ReadOnlyComposable get() = when (this) {
         Category.BODYWEIGHT -> CatBodyweight
         Category.BAND -> CatBand
         Category.WARMUP -> CatWarmUp
@@ -194,6 +196,7 @@ internal fun CheckMark(done: Boolean, enabled: Boolean, modifier: Modifier = Mod
         enabled -> OutlineStrong
         else -> TextDisabled // border only — TextDisabled must never render text
     }
+    val tick = OnAccent
     Box(
         modifier = modifier
             .size(21.dp)
@@ -208,14 +211,14 @@ internal fun CheckMark(done: Boolean, enabled: Boolean, modifier: Modifier = Mod
                 val h = size.height
                 val stroke = Stroke(width = 2.4.dp.toPx(), cap = StrokeCap.Round)
                 drawLine(
-                    color = OnAccent,
+                    color = tick,
                     start = Offset(w * 0.12f, h * 0.55f),
                     end = Offset(w * 0.40f, h * 0.82f),
                     strokeWidth = stroke.width,
                     cap = StrokeCap.Round
                 )
                 drawLine(
-                    color = OnAccent,
+                    color = tick,
                     start = Offset(w * 0.40f, h * 0.82f),
                     end = Offset(w * 0.88f, h * 0.20f),
                     strokeWidth = stroke.width,
@@ -432,7 +435,7 @@ fun StatTile(value: String, caption: String, modifier: Modifier = Modifier) {
 enum class DayCell { COMPLETE, PARTIAL, CURRENT, EMPTY }
 
 private val DayCell.fill: Color
-    get() = when (this) {
+    @Composable @ReadOnlyComposable get() = when (this) {
         DayCell.COMPLETE -> Accent
         DayCell.PARTIAL -> HeatPartial
         DayCell.CURRENT -> Color.Transparent
@@ -529,13 +532,14 @@ fun LoadingState(modifier: Modifier = Modifier) {
  */
 @Composable
 fun StickyCtaBar(modifier: Modifier = Modifier, content: @Composable ColumnScope.() -> Unit) {
+    val hairline = Outline
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .background(CanvasColor)
+            .background(SurfaceColor)
             .drawBehind {
                 drawLine(
-                    color = Outline,
+                    color = hairline,
                     start = Offset(0f, 0f),
                     end = Offset(size.width, 0f),
                     strokeWidth = 1.dp.toPx()
@@ -767,13 +771,13 @@ fun ConfirmDialog(
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 360)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 360)
 @Composable
 private fun ComponentGalleryPreview() {
     MyTrackerAppTheme {
         Column(
             Modifier
-                .background(CanvasColor)
+                .glassBackdrop()
                 .padding(Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {

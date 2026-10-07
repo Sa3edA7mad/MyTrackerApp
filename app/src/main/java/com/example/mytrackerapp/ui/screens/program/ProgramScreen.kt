@@ -67,6 +67,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 class ProgramViewModel(repo: TrackerRepository) : ViewModel() {
 
@@ -126,7 +127,7 @@ fun ProgramScreen(
     var expanded by remember { mutableStateOf<Position?>(null) }
 
     LazyColumn(
-        Modifier.fillMaxSize().background(CanvasColor).padding(horizontal = Spacing.lg)
+        Modifier.fillMaxSize().glassBackdrop().padding(horizontal = Spacing.lg)
     ) {
         item {
             Spacer(Modifier.height(Spacing.sm))
@@ -310,7 +311,7 @@ private fun isAfter(candidate: Position, current: Position): Boolean =
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 880)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 880)
 @Composable
 private fun ProgramPreview() {
     val rules = ProgramRules.DEFAULT

@@ -87,6 +87,8 @@ import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
+import androidx.compose.ui.graphics.Color
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 /** One metric's row on the list screen, values already converted to the display unit. */
 data class MetricRow(
@@ -209,7 +211,7 @@ fun MeasureScreen(
     onEditMetrics: () -> Unit,
     onLog: () -> Unit
 ) {
-    Scaffold(containerColor = CanvasColor) { inner ->
+    Scaffold(containerColor = Color.Transparent, modifier = Modifier.glassBackdrop()) { inner ->
         Column(
             Modifier
                 .padding(inner)
@@ -475,7 +477,7 @@ fun LogMeasurementsSheet(
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 900)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 900)
 @Composable
 private fun MeasureScreenPreview() {
     val today = Instant.now().toEpochMilli()

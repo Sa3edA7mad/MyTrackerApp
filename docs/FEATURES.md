@@ -478,7 +478,7 @@ Validation messages: `Weeks must be between 1 and 26.`, `Days per week must be b
 
 ### SET: settings
 
-Settings sections: `PROGRAM` (`Program rules`), `HEALTH` (`Body measurements`), `SESSION` switches
+Settings sections: `APPEARANCE` (`Match device`, `Light charcoal`, `Steel glass`, `Pale frost`; default **Match device**), `PROGRAM` (`Program rules`), `HEALTH` (`Body measurements`), `SESSION` switches
 (`Guided mode by default`, `Timer auto-advance`, `Keep screen awake`), `FEEDBACK` switches (`Sound cues`, `Haptics`),
 and `YOUR DATA` (`Export training data`, `Reset current cycle`). All switches default to **on** and persist across restarts.
 
@@ -488,6 +488,8 @@ and `YOUR DATA` (`Export training data`, `Reset current cycle`). All switches de
 | SET-02 | P0 | R0 | Turn `Haptics` and `Timer auto-advance` off → kill and relaunch the app → Settings | Both are still off | SettingsE2eTest.set02 |
 | SET-03 | P0 | R0 | Turn `Guided mode by default` off → open a circuit | List mode | SettingsE2eTest.set03 |
 | SET-04 | P2 | `Keep screen awake` on | Leave a guided circuit open for longer than the screen timeout | The screen stays on (MAN-05) | — |
+| SET-05 | P1 | R0 | Settings → tap Steel glass → kill and relaunch → Settings | Steel glass is still selected; the app is mid-gray with dark text | SettingsE2eTest.set05 |
+| SET-06 | P2 | Match device selected | Toggle the device's dark mode | The app switches between Light charcoal and Pale frost; status-bar icons stay readable | — |
 
 ### DAT: your data (export and reset)
 

@@ -85,6 +85,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 /** Everything the screen needs, recomputed together so the impact line never lags the draft. */
 data class RulesEditorState(
@@ -225,7 +226,8 @@ fun RulesScreen(
     var confirmRestore by remember { mutableStateOf(false) }
 
     Scaffold(
-        containerColor = CanvasColor,
+        modifier = Modifier.glassBackdrop(),
+        containerColor = Color.Transparent,
         snackbarHost = { SnackbarHost(snackbars) }
     ) { inner ->
         Column(
@@ -495,7 +497,7 @@ private fun UnitToggleRow(
 
 /* ------------------------------------------------------------------ previews */
 
-@Preview(showBackground = true, backgroundColor = 0xFF0B0D0C, widthDp = 400, heightDp = 900)
+@Preview(showBackground = true, backgroundColor = 0xFF4A5052, widthDp = 400, heightDp = 900)
 @Composable
 private fun RulesScreenPreview() {
     MyTrackerAppTheme {

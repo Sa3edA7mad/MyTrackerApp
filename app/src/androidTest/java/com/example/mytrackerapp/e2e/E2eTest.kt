@@ -21,6 +21,7 @@ import androidx.test.espresso.Espresso
 import com.example.mytrackerapp.MainActivity
 import com.example.mytrackerapp.TrackerApplication
 import com.example.mytrackerapp.data.db.SeedCallback
+import com.example.mytrackerapp.data.prefs.ThemeMode
 import com.example.mytrackerapp.di.AppContainer
 import com.example.mytrackerapp.domain.ExerciseDraft
 import com.example.mytrackerapp.domain.ProgramRules
@@ -100,6 +101,7 @@ abstract class E2eTest {
             setSoundCues(false) // defaults to on; off keeps the emulator quiet, not asserted
             setKeepScreenOn(true)
             setAutoAdvanceTimer(true)
+            setThemeMode(ThemeMode.SYSTEM)
         }
     }
 

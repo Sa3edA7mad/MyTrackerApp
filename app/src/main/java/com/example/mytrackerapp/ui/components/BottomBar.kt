@@ -13,7 +13,7 @@ import androidx.compose.ui.res.painterResource
 import com.example.mytrackerapp.R
 import com.example.mytrackerapp.ui.Routes
 import com.example.mytrackerapp.ui.theme.Accent
-import com.example.mytrackerapp.ui.theme.Canvas as CanvasColor
+import com.example.mytrackerapp.ui.theme.Surface as SurfaceColor
 import com.example.mytrackerapp.ui.theme.TextTertiary
 
 /**
@@ -57,7 +57,7 @@ val topDestinations: List<TopDestination> = listOf(
 
 @Composable
 fun BottomBar(currentRoute: String?, onNavigate: (String) -> Unit) {
-    NavigationBar(containerColor = CanvasColor, contentColor = TextTertiary) {
+    NavigationBar(containerColor = SurfaceColor, contentColor = TextTertiary) {
         topDestinations.forEach { destination ->
             val selected = currentRoute == destination.route
             NavigationBarItem(

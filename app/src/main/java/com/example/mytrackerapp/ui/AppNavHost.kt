@@ -28,6 +28,8 @@ import com.example.mytrackerapp.ui.screens.settings.SettingsRoute
 import com.example.mytrackerapp.ui.screens.routine.RoutineRoute
 import com.example.mytrackerapp.ui.screens.today.TodayRoute
 import com.example.mytrackerapp.ui.theme.Canvas as CanvasColor
+import androidx.compose.ui.graphics.Color
+import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 @Composable
 fun AppRoot() {
@@ -36,7 +38,8 @@ fun AppRoot() {
     val route = backStackEntry?.destination?.route
 
     Scaffold(
-        containerColor = CanvasColor,
+        modifier = Modifier.glassBackdrop(),
+        containerColor = Color.Transparent,
         bottomBar = {
             // Hidden on circuit, routine, exercise, settings and cycleComplete.
             if (route in Routes.TABBED) {

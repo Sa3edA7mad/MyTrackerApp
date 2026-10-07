@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Dark device mode → Light charcoal; match its canvas so launch doesn't flash. -->
+    <style name="Theme.MyTrackerApp" parent="android:Theme.Material.NoActionBar">
+        <item name="android:windowBackground">#FF4A5052</item>
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+    </style>
+</resources>
