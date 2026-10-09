@@ -88,6 +88,11 @@ val Category.accent: Color
         Category.BAND -> CatBand
         Category.WARMUP -> CatWarmUp
         Category.STRETCH -> CatStretch
+        // The library sheets reuse the four category hues; the label always says which it is.
+        Category.GYM -> CatBand
+        Category.CROSSFIT -> CatWarmUp
+        Category.MOBILITY -> CatStretch
+        Category.CORE -> CatBodyweight
     }
 
 val Category.label: String
@@ -96,6 +101,10 @@ val Category.label: String
         Category.BAND -> "RESISTANCE BAND"
         Category.WARMUP -> "WARM-UP"
         Category.STRETCH -> "STRETCH"
+        Category.GYM -> "GYM"
+        Category.CROSSFIT -> "CROSSFIT"
+        Category.MOBILITY -> "MOBILITY"
+        Category.CORE -> "CORE"
     }
 
 /* ------------------------------------------------------------------- buttons */
@@ -349,7 +358,9 @@ fun CircuitCard(
     total: Int,
     state: CircuitCardState,
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    /** A named circuit's name ("Squat + Bench"), under the number. */
+    subtitle: String? = null
 ) {
     // LOCKED stays dimmed but opens: guided mode shows it as a read-only preview, and
     // list view can still tick it.
@@ -394,12 +405,16 @@ fun CircuitCard(
                 color = if (state == CircuitCardState.ACTIVE) Accent else TextTertiary
             )
         }
-        Text(
-            text = "Circuit $index",
-            style = MaterialTheme.typography.titleMedium,
-            color = if (state == CircuitCardState.DONE) TextTertiary else TextPrimary.copy(alpha = alpha),
-            modifier = Modifier.weight(1f)
-        )
+        Column(Modifier.weight(1f)) {
+            Text(
+                text = "Circuit $index",
+                style = MaterialTheme.typography.titleMedium,
+                color = if (state == CircuitCardState.DONE) TextTertiary else TextPrimary.copy(alpha = alpha)
+            )
+            if (subtitle != null) {
+                Text(subtitle, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+            }
+        }
         Text(
             text = "$done/$total",
             style = MaterialTheme.typography.labelMedium,

@@ -14,7 +14,7 @@ data class ProgramRules(
     val daysPerWeek: Int = 6,
     /** One entry per week. Size must equal [weeks]. */
     val circuitsPerWeek: List<Int> = listOf(4, 5, 6, 7),
-    /** Count of enabled PROGRAM-slot exercises. Derived from the catalog from T13 onward. */
+    /** Size of the first circuit — the only circuit before programs. Derived from the plan. */
     val exercisesPerCircuit: Int = 13,
     val warmUpCount: Int = 8,
     val stretchCount: Int = 8,
@@ -25,8 +25,35 @@ data class ProgramRules(
     /** INVARIANT 2 as a rule. Off = warm-up and stretch never enter a total. */
     val countRoutinesInTotals: Boolean = false,
     /** INVARIANT 4 as a rule. Off = any day can be edited at any time. */
-    val lockFutureDays: Boolean = true
+    val lockFutureDays: Boolean = true,
+    /**
+     * Completions each of the program's circuits needs, in plan order. Null = one circuit of
+     * [exercisesPerCircuit], the shape before programs existed.
+     */
+    val circuitSizes: List<Int>? = null,
+    /** Per day of the week, indices into [circuitSizes]. Missing or empty = every circuit. */
+    val dayRotations: List<List<Int>> = emptyList()
 ) {
+
+    private val sizes: List<Int> get() = circuitSizes ?: listOf(exercisesPerCircuit)
+
+    /** Plan-circuit indices a day cycles through. */
+    fun rotation(day: Int): List<Int> =
+        dayRotations.getOrNull(day - 1)?.takeIf { it.isNotEmpty() } ?: sizes.indices.toList()
+
+    /**
+     * Circuit slots on a day: [circuitsForWeek] passes through the day's rotation. With one
+     * circuit per day (Home) that is exactly the week's circuit count.
+     */
+    fun circuitsFor(week: Int, day: Int): Int = circuitsForWeek(week) * rotation(day).size
+
+    /** Which plan circuit a day's [circuit] slot (1-based) runs. */
+    fun planIndexFor(day: Int, circuit: Int): Int {
+        val r = rotation(day)
+        return r[(circuit - 1).mod(r.size)]
+    }
+
+    fun circuitSize(day: Int, circuit: Int): Int = sizes.getOrElse(planIndexFor(day, circuit)) { 0 }
 
     val routineExercisesPerDay: Int =
         (if (warmUpEnabled) warmUpCount else 0) + (if (stretchEnabled) stretchCount else 0)
@@ -40,15 +67,16 @@ data class ProgramRules(
         return circuitsPerWeek[week - 1]
     }
 
-    fun exercisesPerDay(week: Int): Int =
-        circuitsForWeek(week) * exercisesPerCircuit +
+    fun exercisesPerDay(week: Int, day: Int): Int =
+        circuitsForWeek(week) * rotation(day).sumOf { sizes.getOrElse(it) { 0 } } +
             (if (countRoutinesInTotals) routineExercisesPerDay else 0)
 
-    fun exercisesForWeek(week: Int): Int = exercisesPerDay(week) * daysPerWeek
+    fun exercisesForWeek(week: Int): Int = (1..daysPerWeek).sumOf { exercisesPerDay(week, it) }
 
     fun totalExercisesInCycle(): Int = (1..weeks).sumOf { exercisesForWeek(it) }
 
-    fun totalCircuitsInCycle(): Int = (1..weeks).sumOf { circuitsForWeek(it) * daysPerWeek }
+    fun totalCircuitsInCycle(): Int =
+        (1..weeks).sumOf { w -> (1..daysPerWeek).sumOf { d -> circuitsFor(w, d) } }
 
     /**
      * INVARIANT 3: a day is settled when it is fully complete AND stretched (when stretch
@@ -61,8 +89,8 @@ data class ProgramRules(
      * When [stretchEnabled] is off there is no stretch to gate on, so the exercise count
      * alone settles the day.
      */
-    fun isDaySettled(week: Int, doneCount: Int, stretchDone: Boolean, closed: Boolean): Boolean =
-        closed || (doneCount >= exercisesPerDay(week) && (!stretchEnabled || stretchDone))
+    fun isDaySettled(week: Int, day: Int, doneCount: Int, stretchDone: Boolean, closed: Boolean): Boolean =
+        closed || (doneCount >= exercisesPerDay(week, day) && (!stretchEnabled || stretchDone))
 
     /**
      * First unsettled day in program order, or null when the cycle is finished.
@@ -76,7 +104,7 @@ data class ProgramRules(
         stretchDonePositions: Set<Position>,
         closedPositions: Set<Position>
     ): Position? = allPositions.firstOrNull { p ->
-        !isDaySettled(p.week, doneByPosition[p] ?: 0, p in stretchDonePositions, p in closedPositions)
+        !isDaySettled(p.week, p.day, doneByPosition[p] ?: 0, p in stretchDonePositions, p in closedPositions)
     }
 
     fun isAfter(candidate: Position, current: Position): Boolean =
@@ -91,7 +119,7 @@ data class ProgramRules(
         return when (circuit) {
             CIRCUIT_WARMUP -> warmUpEnabled
             CIRCUIT_STRETCH -> stretchEnabled
-            else -> circuit in 1..circuitsForWeek(week)
+            else -> circuit in 1..circuitsFor(week, day)
         }
     }
 

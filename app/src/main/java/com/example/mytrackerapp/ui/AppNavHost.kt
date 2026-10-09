@@ -22,6 +22,8 @@ import com.example.mytrackerapp.ui.screens.measure.MeasureRoute
 import com.example.mytrackerapp.ui.screens.measure.MetricCatalogRoute
 import com.example.mytrackerapp.ui.screens.measure.MetricHistoryRoute
 import com.example.mytrackerapp.ui.screens.program.ProgramRoute
+import com.example.mytrackerapp.ui.screens.programedit.CircuitEditRoute
+import com.example.mytrackerapp.ui.screens.programedit.ProgramEditRoute
 import com.example.mytrackerapp.ui.screens.progress.ProgressRoute
 import com.example.mytrackerapp.ui.screens.rules.RulesRoute
 import com.example.mytrackerapp.ui.screens.settings.SettingsRoute
@@ -60,19 +62,52 @@ fun AppRoot() {
         ) {
             composable(Routes.TODAY) {
                 TodayRoute(
-                    onOpenCircuit = { week, day, circuit ->
-                        nav.navigate(Routes.circuit(week, day, circuit))
+                    onOpenCircuit = { programId, week, day, circuit ->
+                        nav.navigate(Routes.circuit(programId, week, day, circuit))
                     },
-                    onOpenRoutine = { type -> nav.navigate(Routes.routine(type)) },
+                    onOpenRoutine = { programId, type -> nav.navigate(Routes.routine(programId, type)) },
                     onOpenSettings = { nav.navigate(Routes.SETTINGS) },
-                    onCycleComplete = { nav.navigate(Routes.CYCLE_COMPLETE) }
+                    onCycleComplete = { programId -> nav.navigate(Routes.cycleComplete(programId)) },
+                    onOpenPrograms = {
+                        nav.navigate(Routes.PROGRAM) {
+                            popUpTo(nav.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                    }
                 )
             }
             composable(Routes.PROGRAM) {
                 ProgramRoute(
-                    onOpenCircuit = { week, day, circuit ->
-                        nav.navigate(Routes.circuit(week, day, circuit))
-                    }
+                    onOpenCircuit = { programId, week, day, circuit ->
+                        nav.navigate(Routes.circuit(programId, week, day, circuit))
+                    },
+                    onEditProgram = { programId -> nav.navigate(Routes.programEdit(programId)) }
+                )
+            }
+            composable(
+                route = Routes.PROGRAM_EDIT_PATTERN,
+                arguments = listOf(navArgument(Routes.ARG_PROGRAM) { type = NavType.LongType })
+            ) { entry ->
+                val programId = entry.arguments?.getLong(Routes.ARG_PROGRAM) ?: 1L
+                ProgramEditRoute(
+                    programId = programId,
+                    onBack = { nav.popBackStack() },
+                    onEditCircuit = { key -> nav.navigate(Routes.circuitEdit(programId, key)) },
+                    onOpenRules = { nav.navigate(Routes.rules(programId)) }
+                )
+            }
+            composable(
+                route = Routes.CIRCUIT_EDIT_PATTERN,
+                arguments = listOf(
+                    navArgument(Routes.ARG_PROGRAM) { type = NavType.LongType },
+                    navArgument(Routes.ARG_KEY) { type = NavType.StringType }
+                )
+            ) { entry ->
+                CircuitEditRoute(
+                    programId = entry.arguments?.getLong(Routes.ARG_PROGRAM) ?: 1L,
+                    circuitKey = entry.arguments?.getString(Routes.ARG_KEY).orEmpty(),
+                    onDone = { nav.popBackStack() }
                 )
             }
             composable(Routes.PROGRESS) {
@@ -87,12 +122,19 @@ fun AppRoot() {
             composable(Routes.SETTINGS) {
                 SettingsRoute(
                     onBack = { nav.popBackStack() },
-                    onOpenRules = { nav.navigate(Routes.RULES) },
+                    // Settings keeps its shortcut to Home's rules; every program's are in its editor.
+                    onOpenRules = { nav.navigate(Routes.rules(1)) },
                     onOpenMeasure = { nav.navigate(Routes.MEASURE) }
                 )
             }
-            composable(Routes.RULES) {
-                RulesRoute(onBack = { nav.popBackStack() })
+            composable(
+                route = Routes.RULES_PATTERN,
+                arguments = listOf(navArgument(Routes.ARG_PROGRAM) { type = NavType.LongType })
+            ) { entry ->
+                RulesRoute(
+                    onBack = { nav.popBackStack() },
+                    programId = entry.arguments?.getLong(Routes.ARG_PROGRAM) ?: 1L
+                )
             }
             composable(Routes.MEASURE) {
                 MeasureRoute(
@@ -111,8 +153,12 @@ fun AppRoot() {
                 val metricId = entry.arguments?.getString(Routes.ARG_METRIC_ID).orEmpty()
                 MetricHistoryRoute(metricId = metricId, onBack = { nav.popBackStack() })
             }
-            composable(Routes.CYCLE_COMPLETE) {
+            composable(
+                route = Routes.CYCLE_COMPLETE_PATTERN,
+                arguments = listOf(navArgument(Routes.ARG_PROGRAM) { type = NavType.LongType })
+            ) { entry ->
                 CycleCompleteRoute(
+                    programId = entry.arguments?.getLong(Routes.ARG_PROGRAM) ?: 1L,
                     onStartNewCycle = {
                         nav.navigate(Routes.TODAY) {
                             popUpTo(nav.graph.findStartDestination().id) { inclusive = true }
@@ -125,6 +171,7 @@ fun AppRoot() {
             composable(
                 route = Routes.CIRCUIT_PATTERN,
                 arguments = listOf(
+                    navArgument(Routes.ARG_PROGRAM) { type = NavType.LongType },
                     navArgument(Routes.ARG_WEEK) { type = NavType.IntType },
                     navArgument(Routes.ARG_DAY) { type = NavType.IntType },
                     navArgument(Routes.ARG_CIRCUIT) { type = NavType.IntType }
@@ -132,6 +179,7 @@ fun AppRoot() {
             ) { entry ->
                 val args = entry.arguments
                 CircuitRoute(
+                    programId = args?.getLong(Routes.ARG_PROGRAM) ?: 1L,
                     week = args?.getInt(Routes.ARG_WEEK) ?: 1,
                     day = args?.getInt(Routes.ARG_DAY) ?: 1,
                     circuit = args?.getInt(Routes.ARG_CIRCUIT) ?: 1,
@@ -141,10 +189,17 @@ fun AppRoot() {
 
             composable(
                 route = Routes.ROUTINE_PATTERN,
-                arguments = listOf(navArgument(Routes.ARG_TYPE) { type = NavType.StringType })
+                arguments = listOf(
+                    navArgument(Routes.ARG_PROGRAM) { type = NavType.LongType },
+                    navArgument(Routes.ARG_TYPE) { type = NavType.StringType }
+                )
             ) { entry ->
                 val type = RoutineType.fromSlug(entry.arguments?.getString(Routes.ARG_TYPE))
-                RoutineRoute(type = type, onExit = { nav.popBackStack() })
+                RoutineRoute(
+                    type = type,
+                    onExit = { nav.popBackStack() },
+                    programId = entry.arguments?.getLong(Routes.ARG_PROGRAM) ?: 1L
+                )
             }
 
             composable(

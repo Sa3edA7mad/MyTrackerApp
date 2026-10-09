@@ -159,11 +159,11 @@ class RulesViewModel(
     }
 
     companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
+        fun factory(programId: Long): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                RulesViewModel(app.container.rules, app.container.repo)
+                RulesViewModel(app.container.rulesFor(programId), app.container.repoFor(programId))
             }
         }
     }
@@ -172,7 +172,8 @@ class RulesViewModel(
 @Composable
 fun RulesRoute(
     onBack: () -> Unit,
-    viewModel: RulesViewModel = viewModel(factory = RulesViewModel.Factory)
+    programId: Long = 1,
+    viewModel: RulesViewModel = viewModel(factory = RulesViewModel.factory(programId), key = "rules/$programId")
 ) {
     val state by viewModel.state.collectAsState()
     val scope = rememberCoroutineScope()
@@ -257,7 +258,9 @@ fun RulesScreen(
                 }
                 Text("Program rules", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
                 Text(
-                    "${rules.weeks} weeks · ${rules.daysPerWeek} days · ${rules.exercisesPerCircuit} exercises a circuit",
+                    "${rules.weeks} weeks · ${rules.daysPerWeek} days · " +
+                        if ((rules.circuitSizes?.distinct()?.size ?: 1) > 1) "${rules.circuitSizes?.size} circuits"
+                        else "${rules.exercisesPerCircuit} exercises a circuit",
                     style = MaterialTheme.typography.bodyMedium,
                     color = TextTertiary
                 )
@@ -277,7 +280,8 @@ fun RulesScreen(
                     { v -> onDraftChange { it.copy(daysPerWeek = v) } }
                 )
 
-                SectionHeader("Circuits a day")
+                // With named circuits each day runs its own rotation; this is how many times through it.
+                SectionHeader(if ((rules.circuitSizes?.size ?: 1) > 1) "Rounds of each day's circuits" else "Circuits a day")
                 rules.circuitsPerWeek.forEachIndexed { index, count ->
                     NumberStepper(
                         "Week ${index + 1}",

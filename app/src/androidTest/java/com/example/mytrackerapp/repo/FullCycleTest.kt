@@ -164,7 +164,7 @@ class FullCycleTest {
         // collecting a flow after all 286 writes would turn this into a multi-minute test
         // for no extra coverage.
         for (week in 1..rules.weeks) {
-            val size = rules.exercisesPerDay(week)
+            val size = rules.exercisesPerDay(week, 1)
             var done = 0
             for (circuit in 1..rules.circuitsForWeek(week)) {
                 for (id in programIds) {

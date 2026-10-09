@@ -43,6 +43,14 @@ class CircuitViewModel(
     val unitPrefs: StateFlow<UnitPrefs> = rulesRepo.observeUnits()
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UnitPrefs())
 
+    /** Saved AMRAP rounds / for-time seconds for this circuit slot. */
+    val result: StateFlow<Int?> = repo.observeResult(week, day, circuit)
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun saveResult(value: Int) {
+        viewModelScope.launch { repo.saveResult(week, day, circuit, value) }
+    }
+
     fun setDone(exerciseId: String, done: Boolean, detail: SetDetail? = null) {
         viewModelScope.launch { repo.setExerciseDone(week, day, circuit, exerciseId, done, detail) }
     }
@@ -74,13 +82,13 @@ class CircuitViewModel(
     }
 
     companion object {
-        fun factory(week: Int, day: Int, circuit: Int): ViewModelProvider.Factory =
+        fun factory(programId: Long, week: Int, day: Int, circuit: Int): ViewModelProvider.Factory =
             viewModelFactory {
                 initializer {
                     val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                             as TrackerApplication
                     CircuitViewModel(
-                        repo = app.container.repo,
+                        repo = app.container.repoFor(programId),
                         settingsStore = app.container.settings,
                         rulesRepo = app.container.rules,
                         week = week,

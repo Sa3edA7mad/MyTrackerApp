@@ -131,9 +131,9 @@ class CatalogRepository(private val dao: ExerciseDao) {
         Result.success(newId)
     }
 
-    /** Re-inserts the shipped catalog with REPLACE; custom rows are untouched. */
+    /** Re-inserts the shipped catalog (Home's rows and the library import) with REPLACE; custom rows are untouched. */
     suspend fun restoreDefaultCatalog() = withContext(Dispatchers.IO) {
-        dao.insertAll(SeedData.ALL_EXERCISES)
+        dao.insertAll(SeedData.CATALOG)
     }
 
     private suspend fun uniqueId(base: String): String {
@@ -178,5 +178,10 @@ private fun ExerciseDraft.toEntity(
     tracksLoad = tracksLoad,
     defaultLoadKg = defaultLoadKg,
     defaultBandLevel = defaultBandLevel,
-    progressionStep = progressionStep
+    progressionStep = progressionStep,
+    equipment = equipment,
+    level = level,
+    cue = cue,
+    videoTitle = videoTitle,
+    videoChannel = videoChannel
 )

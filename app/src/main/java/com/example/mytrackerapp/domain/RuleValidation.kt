@@ -9,7 +9,8 @@ object RuleValidation {
     const val MAX_WEEKS = 26
     const val MAX_DAYS_PER_WEEK = 7
     const val MAX_CIRCUITS_PER_DAY = 20
-    const val MAX_EXERCISES_PER_CIRCUIT = 40
+    /** Completions per circuit — sets count, so 8 exercises x 5 sets is 40. */
+    const val MAX_EXERCISES_PER_CIRCUIT = 100
 
     /** Empty list means the rules are saveable. Messages are user-facing. */
     fun validate(rules: ProgramRules): List<String> {
@@ -27,7 +28,7 @@ object RuleValidation {
         if (rules.circuitsPerWeek.any { it !in 1..MAX_CIRCUITS_PER_DAY }) {
             errors += "Every week needs between 1 and $MAX_CIRCUITS_PER_DAY circuits a day."
         }
-        if (rules.exercisesPerCircuit !in 1..MAX_EXERCISES_PER_CIRCUIT) {
+        if ((rules.circuitSizes ?: listOf(rules.exercisesPerCircuit)).any { it !in 1..MAX_EXERCISES_PER_CIRCUIT }) {
             errors += "A circuit needs between 1 and $MAX_EXERCISES_PER_CIRCUIT exercises. " +
                 "Turn at least one program exercise back on."
         }
@@ -86,10 +87,10 @@ object RuleImpact {
         val newCounts = counts(to)
 
         val settledBefore = from.allPositions.filter {
-            from.isDaySettled(it.week, oldCounts[it] ?: 0, it in stretchDonePositions, it in closedPositions)
+            from.isDaySettled(it.week, it.day, oldCounts[it] ?: 0, it in stretchDonePositions, it in closedPositions)
         }.toSet()
         val settledAfter = to.allPositions.filter {
-            to.isDaySettled(it.week, newCounts[it] ?: 0, it in stretchDonePositions, it in closedPositions)
+            to.isDaySettled(it.week, it.day, newCounts[it] ?: 0, it in stretchDonePositions, it in closedPositions)
         }.toSet()
 
         val oldIndex = from.nextPosition(oldCounts, stretchDonePositions, closedPositions)

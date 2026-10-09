@@ -18,7 +18,7 @@ class ProgramRulesTest {
 
     @Test
     fun `exercises per day`() {
-        assertEquals(listOf(52, 65, 78, 91), (1..4).map(default::exercisesPerDay))
+        assertEquals(listOf(52, 65, 78, 91), (1..4).map { default.exercisesPerDay(it, 1) })
     }
 
     @Test
@@ -67,7 +67,7 @@ class ProgramRulesTest {
 
     @Test
     fun `nextPosition is null when every day is fully done and stretched`() {
-        val done = default.allPositions.associateWith { default.exercisesPerDay(it.week) }
+        val done = default.allPositions.associateWith { default.exercisesPerDay(it.week, it.day) }
         assertNull(default.nextPosition(done, default.allPositions.toSet(), emptySet()))
     }
 
@@ -81,13 +81,13 @@ class ProgramRulesTest {
         // Regression: caught live on device. Finishing all 4 circuits of Week 1 Day 1
         // jumped straight to Day 2 without the stretch routine ever being reachable,
         // because settlement originally ignored stretch entirely.
-        val done = mapOf(Position(1, 1) to default.exercisesPerDay(1))
+        val done = mapOf(Position(1, 1) to default.exercisesPerDay(1, 1))
         assertEquals(Position(1, 1), default.nextPosition(done, emptySet(), emptySet()))
     }
 
     @Test
     fun `stretch completion is what releases a fully-exercised day`() {
-        val done = mapOf(Position(1, 1) to default.exercisesPerDay(1))
+        val done = mapOf(Position(1, 1) to default.exercisesPerDay(1, 1))
         val stretched = setOf(Position(1, 1))
         assertEquals(Position(1, 2), default.nextPosition(done, stretched, emptySet()))
     }
@@ -110,19 +110,19 @@ class ProgramRulesTest {
 
     @Test
     fun `isDaySettled requires stretch even when the exercise count is satisfied`() {
-        assertFalse(default.isDaySettled(week = 1, doneCount = 52, stretchDone = false, closed = false))
-        assertTrue(default.isDaySettled(week = 1, doneCount = 52, stretchDone = true, closed = false))
+        assertFalse(default.isDaySettled(week = 1, day = 1, doneCount = 52, stretchDone = false, closed = false))
+        assertTrue(default.isDaySettled(week = 1, day = 1, doneCount = 52, stretchDone = true, closed = false))
     }
 
     @Test
     fun `isDaySettled closed overrides both the exercise count and the stretch flag`() {
-        assertTrue(default.isDaySettled(week = 1, doneCount = 0, stretchDone = false, closed = true))
+        assertTrue(default.isDaySettled(week = 1, day = 1, doneCount = 0, stretchDone = false, closed = true))
     }
 
     @Test
     fun `isDaySettled does not require stretch when stretch is disabled`() {
         val rules = default.copy(stretchEnabled = false)
-        assertTrue(rules.isDaySettled(week = 1, doneCount = 52, stretchDone = false, closed = false))
+        assertTrue(rules.isDaySettled(week = 1, day = 1, doneCount = 52, stretchDone = false, closed = false))
     }
 
     @Test
@@ -135,19 +135,19 @@ class ProgramRulesTest {
     @Test
     fun `changing exercises per circuit changes exercises per day`() {
         val rules = default.copy(exercisesPerCircuit = 10)
-        assertEquals(40, rules.exercisesPerDay(1))
+        assertEquals(40, rules.exercisesPerDay(1, 1))
     }
 
     @Test
     fun `counting routines adds warmup and stretch`() {
         val rules = default.copy(countRoutinesInTotals = true)
-        assertEquals(68, rules.exercisesPerDay(1))
+        assertEquals(68, rules.exercisesPerDay(1, 1))
     }
 
     @Test
     fun `counting routines with stretch disabled only adds warmup`() {
         val rules = default.copy(countRoutinesInTotals = true, stretchEnabled = false)
-        assertEquals(60, rules.exercisesPerDay(1))
+        assertEquals(60, rules.exercisesPerDay(1, 1))
     }
 
     @Test

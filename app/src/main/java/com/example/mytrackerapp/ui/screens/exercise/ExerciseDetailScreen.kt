@@ -54,6 +54,7 @@ import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.DayTally
 import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.formVideoUrl
+import com.example.mytrackerapp.ui.screens.circuit.CueTip
 import com.example.mytrackerapp.domain.model.ExerciseDetail
 import com.example.mytrackerapp.domain.model.TargetType
 import com.example.mytrackerapp.domain.model.UiState
@@ -229,15 +230,30 @@ fun ExerciseDetailScreen(
                 )
             }
 
+            val meta = listOf(
+                exercise.level.lowercase().replaceFirstChar(Char::uppercase),
+                exercise.equipment
+            ).filter { it.isNotBlank() }
+            if (meta.isNotEmpty()) {
+                Spacer(Modifier.height(Spacing.xs))
+                Text(meta.joinToString(" · "), style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+            }
+
             Spacer(Modifier.height(Spacing.base))
             TargetPlaque(exercise)
 
-            SectionHeader("How to")
-            Text(
-                exercise.instructions,
-                style = MaterialTheme.typography.bodyLarge,
-                color = TextSecondary
-            )
+            if (exercise.cue.isNotBlank()) {
+                Spacer(Modifier.height(Spacing.base))
+                CueTip(exercise.cue)
+            }
+            if (exercise.instructions.isNotBlank()) {
+                SectionHeader("How to")
+                Text(
+                    exercise.instructions,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = TextSecondary
+                )
+            }
 
             Spacer(Modifier.height(Spacing.base))
             Row(
@@ -263,12 +279,20 @@ fun ExerciseDetailScreen(
                     tint = Accent,
                     modifier = Modifier.size(16.dp)
                 )
-                Text(
-                    "Watch form video",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TextPrimary,
-                    modifier = Modifier.weight(1f)
-                )
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        "Watch form video",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TextPrimary
+                    )
+                    if (exercise.videoTitle.isNotBlank()) {
+                        Text(
+                            exercise.videoTitle + if (exercise.videoChannel.isNotBlank()) " · ${exercise.videoChannel}" else "",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = TextTertiary
+                        )
+                    }
+                }
                 Text("↗", style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
             }
 

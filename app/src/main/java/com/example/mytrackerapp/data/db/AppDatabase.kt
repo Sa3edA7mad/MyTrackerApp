@@ -5,6 +5,7 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.mytrackerapp.data.entity.CircuitResultEntity
 import com.example.mytrackerapp.data.entity.CompletionEntity
 import com.example.mytrackerapp.data.entity.CycleEntity
 import com.example.mytrackerapp.data.entity.CycleRulesEntity
@@ -12,6 +13,7 @@ import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
 import com.example.mytrackerapp.data.entity.MeasurementEntity
 import com.example.mytrackerapp.data.entity.MetricEntity
+import com.example.mytrackerapp.data.entity.ProgramEntity
 import com.example.mytrackerapp.data.entity.ProgramRulesEntity
 import com.example.mytrackerapp.data.seed.SeedData
 import com.example.mytrackerapp.domain.ProgramRules
@@ -25,9 +27,11 @@ import com.example.mytrackerapp.domain.ProgramRules
         ProgramRulesEntity::class,
         CycleRulesEntity::class,
         MetricEntity::class,
-        MeasurementEntity::class
+        MeasurementEntity::class,
+        ProgramEntity::class,
+        CircuitResultEntity::class
     ],
-    version = 6,
+    version = 7,
     exportSchema = true
 )
 abstract class AppDatabase : RoomDatabase() {
@@ -39,6 +43,8 @@ abstract class AppDatabase : RoomDatabase() {
     abstract fun rulesDao(): RulesDao
     abstract fun metricDao(): MetricDao
     abstract fun measurementDao(): MeasurementDao
+    abstract fun programDao(): ProgramDao
+    abstract fun resultDao(): CircuitResultDao
 
     companion object {
         const val NAME = "tracker.db"
@@ -52,13 +58,14 @@ abstract class AppDatabase : RoomDatabase() {
         fun build(context: Context): AppDatabase =
             Room.databaseBuilder(context.applicationContext, AppDatabase::class.java, NAME)
                 .addCallback(SeedCallback)
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .build()
     }
 }
 
 /**
- * Seeds the 29-row catalog and opens the first cycle.
+ * Seeds the catalog (29 Home rows + the library import), the Home program and the starter
+ * programs, and opens Home's first cycle.
  *
  * Raw SQL rather than the DAOs because onCreate runs while the database instance is
  * still being constructed — there is nothing to call a DAO on yet.
@@ -68,40 +75,12 @@ internal object SeedCallback : RoomDatabase.Callback() {
     override fun onCreate(db: SupportSQLiteDatabase) {
         super.onCreate(db)
 
-        SeedData.ALL_EXERCISES.forEach { e ->
-            db.execSQL(
-                """INSERT INTO exercises
-                   (id, name, category, muscles, instructions, targetType, targetValue,
-                    perSide, targetLabel, videoUrl, sortOrder, slot, enabled, archivedAt,
-                    isCustom, tracksReps, tracksLoad, defaultLoadKg, defaultBandLevel,
-                    progressionStep)
-                   VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?)""",
-                arrayOf<Any>(
-                    e.id,
-                    e.name,
-                    e.category,
-                    e.muscles,
-                    e.instructions,
-                    e.targetType,
-                    e.targetValue,
-                    if (e.perSide) 1 else 0,
-                    e.targetLabel,
-                    e.videoUrl,
-                    e.sortOrder,
-                    e.slot,
-                    if (e.enabled) 1 else 0,
-                    if (e.isCustom) 1 else 0,
-                    if (e.tracksReps) 1 else 0,
-                    if (e.tracksLoad) 1 else 0,
-                    e.progressionStep
-                )
-            )
-        }
+        SeedData.CATALOG.forEach { insertExercise(db, it, orIgnore = false) }
 
         // INVARIANT 1: there is always exactly one active cycle. Without this the very
         // first launch has no cycle to read and every screen renders empty.
         db.execSQL(
-            "INSERT INTO cycles (startedAt, completedAt, isActive) VALUES (?, NULL, 1)",
+            "INSERT INTO cycles (startedAt, completedAt, isActive, programId) VALUES (?, NULL, 1, 1)",
             arrayOf(System.currentTimeMillis())
         )
         val cycleId = db.compileStatement("SELECT last_insert_rowid()").use {
@@ -117,8 +96,8 @@ internal object SeedCallback : RoomDatabase.Callback() {
             """INSERT INTO program_rules
                (id, weeks, daysPerWeek, circuitsPerWeekCsv, dayRolloverHour, warmUpEnabled,
                 stretchEnabled, countRoutinesInTotals, lockFutureDays, weightUnit, lengthUnit,
-                updatedAt)
-               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 'KG', 'CM', ?)""",
+                updatedAt, planText)
+               VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?, 'KG', 'CM', ?, '')""",
             arrayOf<Any>(
                 default.weeks,
                 default.daysPerWeek,
@@ -141,8 +120,8 @@ internal object SeedCallback : RoomDatabase.Callback() {
             """INSERT INTO cycle_rules
                (cycleId, weeks, daysPerWeek, circuitsPerWeekCsv, exercisesPerCircuit,
                 warmUpCount, stretchCount, dayRolloverHour, warmUpEnabled, stretchEnabled,
-                countRoutinesInTotals, lockFutureDays, programExerciseIdsCsv, snapshotAt)
-               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+                countRoutinesInTotals, lockFutureDays, programExerciseIdsCsv, snapshotAt, planText)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, '')""",
             arrayOf<Any>(
                 cycleId,
                 default.weeks,
@@ -160,6 +139,9 @@ internal object SeedCallback : RoomDatabase.Callback() {
                 now
             )
         )
+
+        // INVARIANT 9: mirrors what MIGRATION_6_7 inserts for an upgrading install.
+        insertPrograms(db, weightUnit = "KG", lengthUnit = "CM", now = now)
 
         // INVARIANT 9: mirrors what MIGRATION_4_5 inserts for an upgrading install.
         SeedData.DEFAULT_METRICS.forEach { m ->

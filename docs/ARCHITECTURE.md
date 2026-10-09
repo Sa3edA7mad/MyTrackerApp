@@ -3,12 +3,13 @@
 ## Layers
 
 ```
-data/    Room database, DAOs, entities, DataStore settings, seed catalog, migrations (v1-v5)
+data/    Room database, DAOs, entities, DataStore settings, seed catalog + library import +
+         starter programs, migrations (v1-v7)
 di/      Manual dependency container (AppContainer) — no Hilt
-domain/  Pure program/rule math (ProgramRules.kt, RuleValidation.kt, CatalogValidation.kt,
+domain/  Pure program/rule math (ProgramRules.kt, Plan.kt, RuleValidation.kt, CatalogValidation.kt,
          PerformanceStats.kt, BodyStats.kt, Units.kt) and view-facing models (domain/model/)
-repo/    TrackerRepository, RulesRepository, CatalogRepository, MeasurementRepository —
-         the only places a DAO is referenced outside data/
+repo/    TrackerRepository, RulesRepository, ProgramRepository, CatalogRepository,
+         MeasurementRepository — the only places a DAO is referenced outside data/
 ui/      Compose screens, navigation, theme, shared components
 ```
 
@@ -16,28 +17,65 @@ Everything in `domain/` has no Android imports and is exercised entirely by JVM 
 Every screen composable takes state and lambdas only — no ViewModel, no `Context`, no DAO
 inside a screen composable.
 
+## Programs
+
+The app holds several programs (Home 4-Week, Gym Strength, CrossFit Conditioning, and any you
+create). Any number can be **active** at once; each runs its **own cycle** with its own
+week/day counter, and Today shows a chip per active program. Program 1 is the original
+install — `MIGRATION_6_7` wraps all existing data into it without moving a row.
+
+A program is scoped by id everywhere below the UI: `AppContainer.repoFor(id)` /
+`rulesFor(id)` hand out a `TrackerRepository`/`RulesRepository` bound to that program
+(both default to Home, so code and tests that predate programs read Home unchanged).
+
+A program's **plan** (`domain/Plan.kt`) is its named circuits, which circuits each day of
+the week runs, and its warm-up and stretch lists:
+
+- A **circuit** is an ordered list of items — exercise + sets + optional target/load
+  override — plus a set order (ROUNDS: A1 B1 A2 B2, or STRAIGHT: A1 A2 B1 B2), a format
+  (STANDARD with optional rest between sets, EMOM, INTERVAL, AMRAP, FOR_TIME) and its timing.
+- A circuit can instead be **slot-backed**: "every enabled exercise in the Library's PROGRAM
+  (or WARMUP/STRETCH) slot". That is how Home is defined, so editing the Library still edits
+  Home exactly as it did before programs. The 123 imported exercises sit in the LIBRARY slot,
+  which is in no slot list.
+- **Days**: `circuitsPerWeek[w]` is how many passes a day makes through its rotation. Home is
+  one circuit per day × 4/5/6/7 passes; Gym is a different circuit per day × 1 pass.
+- **Sets** are separate ticks. A multi-set step's key is `exerciseId#set`; a single-set step
+  keys as the bare id, so Home's circuits behave exactly as before.
+
+The draft plan is `PlanCodec` text on `program_rules.planText` (blank = the slot plan); a
+cycle snapshot freezes the *resolved* plan on `cycle_rules.planText` (Invariant 7).
+
 ## Data model
 
-Eight tables, all in `data/entity/Entities.kt`:
+Ten tables, all in `data/entity/Entities.kt`:
 
-- **`exercises`** — the catalog, seeded with 29 rows on database create but fully mutable
-  at runtime: `slot` (PROGRAM/WARMUP/STRETCH) decides circuit membership, `enabled` and
-  `archivedAt` control whether it's in the rotation, and `tracksReps`/`tracksLoad`/
-  `defaultLoadKg`/`defaultBandLevel`/`progressionStep` drive rep/load logging.
-- **`program_rules`** — the single editable *draft* row for the program's shape (weeks,
-  days, circuits per week, warm-up/stretch, counting/locking toggles, display units).
-- **`cycle_rules`** — the rules a cycle was started under, frozen at creation time
-  (Invariant 7), including the exact ordered exercise ids that made up its circuit.
-- **`cycles`** — one row per attempt at the program. Exactly one `isActive = true` at a time.
+- **`exercises`** — the catalog: Home's 29 rows plus the 123-row library import
+  (`LibrarySeed.kt`, generated from the Gym/CrossFit/Mobility/Core workbook), fully mutable
+  at runtime: `slot` (PROGRAM/WARMUP/STRETCH/LIBRARY) decides slot-backed circuit membership,
+  `enabled` and `archivedAt` control whether it's in the rotation, `tracksReps`/`tracksLoad`/
+  `defaultLoadKg`/`defaultBandLevel`/`progressionStep` drive rep/load logging, and
+  `equipment`/`level`/`cue`/`videoTitle`/`videoChannel` carry the workbook's metadata.
+- **`programs`** — name, `active`, soft-delete `archivedAt`. Archiving also pauses.
+- **`program_rules`** — one editable *draft* row per program (`id` = program id): shape
+  (weeks, days, passes per week, warm-up/stretch, counting/locking toggles), `planText`, and
+  the display units (app-wide: every row carries the same pair).
+- **`cycle_rules`** — the rules and resolved plan a cycle was started under, frozen at
+  creation time (Invariant 7).
+- **`cycles`** — one row per attempt at a program (`programId`). At most one
+  `isActive = true` per program.
+- **`circuit_results`** — a timed circuit's score (AMRAP rounds, FOR_TIME seconds), one per
+  circuit slot.
 - **`days`** — per-day state that can't be derived from completions: `warmUpDoneAt`,
   `stretchDoneAt`, `closedAt`. There is deliberately **no** `completedAt` — day completion
   is always computed from the completion count (and, since the stretch-gate fix, from
   `stretchDoneAt`), so it can't drift out of sync with the actual data.
-- **`completions`** — one row per finished exercise, plus nullable `reps`/`loadKg`/
+- **`completions`** — one row per finished exercise set (`setNumber`, 1 for every row from
+  before sets existed), plus nullable `reps`/`loadKg`/
   `bandLevel`/`holdSeconds`/`rpe`/`note` detail columns. **Un-ticking deletes the row.**
   Presence of the row *is* the truth, which is what makes every aggregate a `COUNT(*)` —
   the detail columns are never counted on. A unique index on
-  `(cycleId, week, day, circuit, exerciseId)` plus `OnConflictStrategy.IGNORE` on insert is
+  `(cycleId, week, day, circuit, exerciseId, setNumber)` plus `OnConflictStrategy.IGNORE` on insert is
   what makes a double-tap idempotent.
 - **`metrics`** — the body-measurement catalog: 17 default rows plus any custom ones,
   each with a kind (WEIGHT/LENGTH/PERCENT/COUNT), enabled flag, and soft-delete `archivedAt`.
@@ -52,8 +90,8 @@ numbers: `0` for warm-up, `-1` for stretch (see Invariant 2 below).
 These are the rules the app is built around. Each is named in the source next to the code
 that depends on it, and each has direct test coverage.
 
-1. **There is always exactly one active cycle.** The database's `onCreate` callback opens
-   the first one; `TrackerRepository.ensureActiveCycle()` is called defensively at the head
+1. **There is always exactly one active cycle per program.** The database's `onCreate`
+   callback opens Home's first one; `TrackerRepository.ensureActiveCycle()` is called defensively at the head
    of every read so no screen ever has to handle a null cycle.
 
 2. **Program totals only ever count `circuit >= 1`, unless `countRoutinesInTotals` is on.**
@@ -114,7 +152,9 @@ data class ProgramRules(
     val warmUpEnabled: Boolean = true,
     val stretchEnabled: Boolean = true,
     val countRoutinesInTotals: Boolean = false,
-    val lockFutureDays: Boolean = true
+    val lockFutureDays: Boolean = true,
+    val circuitSizes: List<Int>? = null,       // per plan circuit; null = one circuit
+    val dayRotations: List<List<Int>> = emptyList()  // per day; empty = every circuit
 )
 ```
 
@@ -150,6 +190,9 @@ Unit tests (`app/src/test`) — pure JVM, no device needed. Notable suites:
 | Suite | Covers |
 |---|---|
 | `ProgramRulesTest` | `nextPosition`, `isDaySettled` (incl. the stretch gate), derived totals |
+| `PlanTest` | Plan codec round-trip, slot resolution, straight vs rounds set order, overrides, per-day rotation math |
+| `WorkoutClockTest` | EMOM / interval / AMRAP / for-time phase arithmetic |
+| `LibrarySeedTest` | The 123-row import and that the starter programs only reference real exercises |
 | `RuleValidationTest` / `RuleImpactTest` | Rule-edit validation and apply-impact analysis |
 | `CatalogValidationTest` | Exercise-draft validation |
 | `PerformanceStatsTest` / `BodyStatsTest` / `UnitsTest` | Set-log stats, BMI/WHR/lean mass, unit conversion |
@@ -163,7 +206,8 @@ device/emulator. Notable suites:
 
 | Suite | Covers |
 |---|---|
-| `MigrationTest` | Every schema migration v1→v5, plus fresh-install/migrated-install parity (Invariant 9) |
+| `MigrationTest` | Every schema migration v1→v7, plus fresh-install/migrated-install parity (Invariant 9) |
+| `ProgramRepositoryTest` | Several programs side by side: named circuits, sets, isolation, apply, activation, combined streak, results |
 | `SeedTest` / `DaoTest` | Catalog seeding, idempotent inserts, cascade deletes |
 | `RulesSnapshotTest` / `RulesApplyTest` / `OrphanFilterTest` / `InvariantTogglesTest` | The rules read/write/apply/orphan-filtering path |
 | `CatalogRulesTest` / `CatalogCrudTest` | Exercise CRUD and its effect on the draft vs. a running cycle |
@@ -206,6 +250,16 @@ would have shipped.
    tracking fields enabled, the Save button could sit below the visible area of a
    `ModalBottomSheet` with no way to scroll to it. Fixed by wrapping the sheet's content in
    a `verticalScroll` capped to 90% of the screen height.
+
+6. **List mode showed nothing for library categories.** `ChecklistMode` iterated a hard-coded
+   list of Home's four categories, so a circuit made of Gym/CrossFit/Mobility/Core exercises
+   rendered an empty checklist (guided mode, which doesn't group, was fine). Found by the
+   programs E2E pass (`PGM-16`); fixed by iterating `Category.entries`.
+
+7. **Composition-scope coroutines navigated off the main thread.** The circuit editor's
+   save/delete launched in the screen's coroutine scope and then navigated, which crashes under
+   the Compose UI test harness. They now run in `viewModelScope` (same fix pattern as the
+   exercise editor).
 
 See `git log` for the commits; the guided-pager fix in particular is covered by
 `NextUndoneIndexTest`, which pins the exact scenario that exposed it (ticking a run of

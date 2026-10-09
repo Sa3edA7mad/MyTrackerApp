@@ -5,6 +5,7 @@ import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.flow.Flow
@@ -38,6 +39,14 @@ class SettingsStore(private val context: Context) {
         val keepScreenOn = booleanPreferencesKey("keep_screen_on")
         val autoAdvanceTimer = booleanPreferencesKey("auto_advance_timer")
         val themeMode = stringPreferencesKey("theme_mode")
+        val todayProgram = longPreferencesKey("today_program")
+    }
+
+    /** The program chip Today was last left on; null until one is picked. */
+    val todayProgramId: Flow<Long?> = context.settingsDataStore.data.map { it[Keys.todayProgram] }
+
+    suspend fun setTodayProgramId(id: Long?) {
+        context.settingsDataStore.edit { if (id == null) it.remove(Keys.todayProgram) else it[Keys.todayProgram] = id }
     }
 
     val settings: Flow<Settings> = context.settingsDataStore.data.map { p ->

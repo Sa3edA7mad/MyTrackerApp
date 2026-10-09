@@ -34,7 +34,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.mutableStateOf
 import com.example.mytrackerapp.data.prefs.Settings
+import com.example.mytrackerapp.domain.CircuitFormat
 import com.example.mytrackerapp.domain.model.CircuitView
 import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.formVideoUrl
@@ -120,6 +122,9 @@ fun GuidedPager(
         )
     }
     var stage by rememberSaveable(index, identity) { mutableIntStateOf(STAGE_FIRST) }
+    // Between-set rest. Timed formats keep their own clock, so only STANDARD circuits rest here.
+    val restSeconds = view.plan?.takeIf { it.format == CircuitFormat.STANDARD }?.restSeconds ?: 0
+    var resting by rememberSaveable(identity) { mutableStateOf(false) }
 
     val exercise = view.exercises.getOrNull(index)
     if (exercise == null) {
@@ -158,17 +163,41 @@ fun GuidedPager(
         }
     }
 
+    /** Rest first when the circuit has a rest period and there is still work after this. */
+    fun restThenNext() {
+        if (restSeconds > 0 && !singleExercise && nextUndoneIndex(view.exercises, view.doneIds, index) != null) {
+            resting = true
+        } else {
+            goNext()
+        }
+    }
+
     fun advance() {
         if (!view.editable) return
         if (exercise.perSide) {
             when (stage) {
                 STAGE_FIRST -> stage = STAGE_SWITCH
                 STAGE_SWITCH -> stage = STAGE_SECOND
-                else -> onDone(exercise.id) { goNext() }
+                else -> onDone(exercise.id) { restThenNext() }
             }
         } else {
-            onDone(exercise.id) { goNext() }
+            onDone(exercise.id) { restThenNext() }
         }
+    }
+
+    if (resting) {
+        RestPanel(
+            seconds = restSeconds,
+            resetKey = "$identity-$index-rest",
+            settings = settings,
+            overline = overline,
+            onExit = onExit,
+            onFinished = {
+                resting = false
+                goNext()
+            }
+        )
+        return
     }
 
     // Auto-advance once the hold completes, after letting the completion tone land.
@@ -252,6 +281,10 @@ fun GuidedPager(
                     color = TextTertiary,
                     textAlign = TextAlign.Center
                 )
+            }
+            view.setLabels[exercise.id]?.let { setLabel ->
+                Spacer(Modifier.height(Spacing.sm))
+                Badge(setLabel.uppercase())
             }
             if (exercise.perSide) {
                 Spacer(Modifier.height(Spacing.sm))
@@ -412,11 +445,17 @@ private fun SegmentBar(
 
 @Composable
 private fun SideBadge(stage: Int) {
-    val label = when (stage) {
-        STAGE_SECOND -> "SIDE 2"
-        STAGE_SWITCH -> "SIDE 1 DONE"
-        else -> "SIDE 1"
-    }
+    Badge(
+        when (stage) {
+            STAGE_SECOND -> "SIDE 2"
+            STAGE_SWITCH -> "SIDE 1 DONE"
+            else -> "SIDE 1"
+        }
+    )
+}
+
+@Composable
+private fun Badge(label: String) {
     Box(
         Modifier
             .clip(RoundedCornerShape(Radius.pill))
@@ -482,14 +521,20 @@ private fun InstructionCard(exercise: Exercise) {
             .border(1.dp, Outline, RoundedCornerShape(Radius.md))
             .padding(Spacing.md)
     ) {
-        Text("HOW TO", style = MaterialTheme.typography.labelSmall, color = TextTertiary)
-        Spacer(Modifier.height(Spacing.sm))
-        Text(
-            exercise.instructions,
-            style = MaterialTheme.typography.bodyMedium,
-            color = TextSecondary
-        )
-        Spacer(Modifier.height(Spacing.md))
+        if (exercise.cue.isNotBlank()) {
+            CueTip(exercise.cue)
+            Spacer(Modifier.height(Spacing.md))
+        }
+        if (exercise.instructions.isNotBlank()) {
+            Text("HOW TO", style = MaterialTheme.typography.labelSmall, color = TextTertiary)
+            Spacer(Modifier.height(Spacing.sm))
+            Text(
+                exercise.instructions,
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextSecondary
+            )
+            Spacer(Modifier.height(Spacing.md))
+        }
         Row(
             Modifier
                 .fillMaxWidth()
@@ -530,5 +575,57 @@ private fun PreviewBanner() {
             color = TextSecondary,
             textAlign = TextAlign.Center
         )
+    }
+}
+
+/** The library's one-line technique cue, highlighted above the how-to. */
+@Composable
+fun CueTip(cue: String, modifier: Modifier = Modifier) {
+    Column(
+        modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(Radius.sm))
+            .background(Accent.copy(alpha = 0.10f))
+            .padding(Spacing.md)
+    ) {
+        Text("KEY CUE", style = MaterialTheme.typography.labelSmall, color = Accent)
+        Spacer(Modifier.height(Spacing.xs))
+        Text(cue, style = MaterialTheme.typography.bodyMedium, color = TextPrimary)
+    }
+}
+
+/** Between-set rest: a countdown that moves on by itself, or on "Skip rest". */
+@Composable
+private fun RestPanel(
+    seconds: Int,
+    resetKey: String,
+    settings: Settings,
+    overline: String,
+    onExit: () -> Unit,
+    onFinished: () -> Unit
+) {
+    val timer = rememberHoldTimer(totalSeconds = seconds, resetKey = resetKey)
+    TimerCues(timer, settings.soundCues, settings.haptics)
+    LaunchedEffect(timer) { timer.start() }
+    LaunchedEffect(timer.finished, timer.started) {
+        if (timer.finished && timer.started) {
+            delay(700)
+            onFinished()
+        }
+    }
+    Column(Modifier.fillMaxSize()) {
+        Header(overline = overline, position = "REST", onExit = onExit)
+        Column(
+            Modifier.weight(1f).fillMaxWidth(),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text("REST", style = MaterialTheme.typography.labelSmall, color = TextTertiary)
+            Spacer(Modifier.height(Spacing.md))
+            HoldTimerDial(timer)
+        }
+        StickyCtaBar {
+            PrimaryButton("Skip rest", onFinished)
+        }
     }
 }

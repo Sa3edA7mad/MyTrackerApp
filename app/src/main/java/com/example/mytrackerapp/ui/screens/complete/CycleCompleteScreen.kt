@@ -68,11 +68,11 @@ class CycleCompleteViewModel(private val repo: TrackerRepository) : ViewModel() 
     }
 
     companion object {
-        val Factory: ViewModelProvider.Factory = viewModelFactory {
+        fun factory(programId: Long): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                CycleCompleteViewModel(app.container.repo)
+                CycleCompleteViewModel(app.container.repoFor(programId))
             }
         }
     }
@@ -82,7 +82,11 @@ class CycleCompleteViewModel(private val repo: TrackerRepository) : ViewModel() 
 fun CycleCompleteRoute(
     onStartNewCycle: () -> Unit,
     onBack: () -> Unit,
-    viewModel: CycleCompleteViewModel = viewModel(factory = CycleCompleteViewModel.Factory)
+    programId: Long = 1,
+    viewModel: CycleCompleteViewModel = viewModel(
+        factory = CycleCompleteViewModel.factory(programId),
+        key = "cycleComplete/$programId"
+    )
 ) {
     val state by viewModel.state.collectAsState()
 

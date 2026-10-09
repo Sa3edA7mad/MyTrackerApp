@@ -38,9 +38,13 @@ class SeedTest {
         db.close()
     }
 
+    /** Home's own rows — the library import sits in the LIBRARY slot (LibrarySeedTest pins it). */
+    private suspend fun home() = db.exerciseDao().getAll().filter { it.slot != "LIBRARY" }
+
     @Test
     fun catalogHasTwentyNineRowsInTheRightCategories() = runTest {
-        val all = db.exerciseDao().getAll()
+        assertEquals("Home's 29 plus the 123-row library import", 152, db.exerciseDao().getAll().size)
+        val all = home()
         assertEquals(29, all.size)
 
         val byCategory = all.groupingBy { it.category }.eachCount()
@@ -85,7 +89,7 @@ class SeedTest {
 
     @Test
     fun perSideTargetsAreFlagged() = runTest {
-        val perSide = db.exerciseDao().getAll().filter { it.perSide }.map { it.id }.toSet()
+        val perSide = home().filter { it.perSide }.map { it.id }.toSet()
         assertEquals(
             setOf(
                 "external_rotation", "internal_rotation",
@@ -110,15 +114,16 @@ class SeedTest {
 
     @Test
     fun everyExerciseHasAYouTubeLink() = runTest {
-        val all = db.exerciseDao().getAll()
+        val all = home()
         assertTrue(all.all { it.videoUrl.startsWith("https://www.youtube.com/") })
         // The four real videos from the sheet, as opposed to search URLs.
         assertEquals(
             "https://www.youtube.com/watch?v=LSkyinhmA8k",
             all.single { it.id == "band_row" }.videoUrl
         )
-        assertEquals(4, all.count { it.videoUrl.contains("/watch?v=") })
-        assertEquals(25, all.count { it.videoUrl.contains("/results?search_query=") })
+        // The 4 original real videos plus Cat-Cow and Child's Pose, merged from the library.
+        assertEquals(6, all.count { it.videoUrl.contains("/watch?v=") })
+        assertEquals(23, all.count { it.videoUrl.contains("/results?search_query=") })
         // Searches are for the exercise name alone.
         assertTrue(all.none { it.videoUrl.contains("proper") })
     }
@@ -132,7 +137,7 @@ class SeedTest {
 
     @Test
     fun sortOrderIsStableAndBanded() = runTest {
-        val all = db.exerciseDao().getAll()
+        val all = home()
         assertEquals(all.map { it.sortOrder }, all.map { it.sortOrder }.sorted())
         assertEquals("squat", all.first().id)
         assertEquals("spinal_twist", all.last().id)

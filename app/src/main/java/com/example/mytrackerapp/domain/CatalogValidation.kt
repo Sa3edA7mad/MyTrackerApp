@@ -23,7 +23,12 @@ data class ExerciseDraft(
     val defaultLoadKg: Double? = null,
     val defaultBandLevel: String? = null,
     val progressionStep: Int = 0,
-    val enabled: Boolean = true
+    val enabled: Boolean = true,
+    val equipment: String = "",
+    val level: String = "",
+    val cue: String = "",
+    val videoTitle: String = "",
+    val videoChannel: String = ""
 )
 
 object CatalogValidation {

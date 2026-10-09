@@ -78,11 +78,11 @@ class RoutineViewModel(
     }
 
     companion object {
-        fun factory(routineCircuit: Int): ViewModelProvider.Factory = viewModelFactory {
+        fun factory(programId: Long, routineCircuit: Int): ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                RoutineViewModel(app.container.repo, app.container.settings, routineCircuit)
+                RoutineViewModel(app.container.repoFor(programId), app.container.settings, routineCircuit)
             }
         }
     }
@@ -98,7 +98,8 @@ class RoutineViewModel(
 @Composable
 fun RoutineRoute(
     type: RoutineType,
-    onExit: () -> Unit
+    onExit: () -> Unit,
+    programId: Long = 1
 ) {
     val routineCircuit = when (type) {
         RoutineType.WARMUP -> CIRCUIT_WARMUP
@@ -110,8 +111,8 @@ fun RoutineRoute(
     }
 
     val viewModel: RoutineViewModel = viewModel(
-        factory = RoutineViewModel.factory(routineCircuit),
-        key = "routine/${type.slug}"
+        factory = RoutineViewModel.factory(programId, routineCircuit),
+        key = "routine/$programId/${type.slug}"
     )
     val state by viewModel.state.collectAsState()
     val settings by viewModel.settings.collectAsState()

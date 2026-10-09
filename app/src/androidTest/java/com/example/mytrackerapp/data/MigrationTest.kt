@@ -12,7 +12,9 @@ import com.example.mytrackerapp.data.db.MIGRATION_2_3
 import com.example.mytrackerapp.data.db.MIGRATION_3_4
 import com.example.mytrackerapp.data.db.MIGRATION_4_5
 import com.example.mytrackerapp.data.db.MIGRATION_5_6
+import com.example.mytrackerapp.data.db.MIGRATION_6_7
 import com.example.mytrackerapp.data.db.SeedCallback
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
@@ -205,6 +207,64 @@ class MigrationTest {
     }
 
     /**
+     * v6 -> v7: the install becomes the Home program without moving any history, every old
+     * completion becomes set 1, the library lands in the LIBRARY slot, and a user's own
+     * exercise that already took a library id is left alone.
+     */
+    @Test
+    fun migrate6To7() {
+        val dbName = "migration-test-6-7"
+        helper.createDatabase(dbName, 6).apply {
+            fun insert(id: String, slot: String, url: String, custom: Int = 0) = execSQL(
+                """INSERT INTO exercises
+                   (id, name, category, muscles, instructions, targetType, targetValue, perSide,
+                    targetLabel, videoUrl, sortOrder, slot, enabled, archivedAt, isCustom,
+                    tracksReps, tracksLoad, defaultLoadKg, defaultBandLevel, progressionStep)
+                   VALUES ('$id', 'My $id', 'BODYWEIGHT', '', '', 'REPS', 5, 0, '5 reps', '$url',
+                           1, '$slot', 1, NULL, $custom, 0, 0, NULL, NULL, 0)"""
+            )
+            insert("cat_cow", "WARMUP", "https://www.youtube.com/results?search_query=Cat-Cow")
+            insert("childs_pose", "STRETCH", "https://example.com/my-own-video")
+            insert("plank", "PROGRAM", "", custom = 1)
+            execSQL(
+                """INSERT INTO program_rules (id, weeks, daysPerWeek, circuitsPerWeekCsv, dayRolloverHour,
+                   warmUpEnabled, stretchEnabled, countRoutinesInTotals, lockFutureDays, weightUnit,
+                   lengthUnit, updatedAt) VALUES (1, 4, 6, '4,5,6,7', 4, 1, 1, 0, 1, 'LB', 'IN', 1)"""
+            )
+            execSQL("INSERT INTO cycles (id, startedAt, completedAt, isActive) VALUES (1, 1000, NULL, 1)")
+            execSQL(
+                """INSERT INTO completions (cycleId, week, day, circuit, exerciseId, completedAt)
+                   VALUES (1, 1, 1, 1, 'plank', 2000)"""
+            )
+            close()
+        }
+
+        val migrated = helper.runMigrationsAndValidate(dbName, 7, true, MIGRATION_6_7)
+
+        fun string(sql: String) = migrated.query(sql).use { c -> c.moveToFirst(); c.getString(0) }
+        fun int(sql: String) = migrated.query(sql).use { c -> c.moveToFirst(); c.getInt(0) }
+
+        assertEquals("Home 4-Week|1", string("SELECT name || '|' || active FROM programs WHERE id = 1"))
+        assertEquals(3, int("SELECT COUNT(*) FROM programs"))
+        assertEquals(0, int("SELECT COUNT(*) FROM programs WHERE id > 1 AND active = 1"))
+        assertEquals(1, int("SELECT programId FROM cycles WHERE id = 1"))
+        assertEquals(1, int("SELECT setNumber FROM completions WHERE exerciseId = 'plank'"))
+        assertEquals("", string("SELECT planText FROM program_rules WHERE id = 1"))
+        assertEquals("LB", string("SELECT weightUnit FROM program_rules WHERE id = 2"))
+        assertEquals(1, int("SELECT COUNT(*) FROM program_rules WHERE id = 3 AND planText LIKE '%kettlebell_swing%'"))
+
+        // 123 library rows; the user's own "plank" kept its slot and name.
+        assertEquals(3 + 122, int("SELECT COUNT(*) FROM exercises"))
+        assertEquals("My plank|PROGRAM", string("SELECT name || '|' || slot FROM exercises WHERE id = 'plank'"))
+        assertEquals("LIBRARY", string("SELECT slot FROM exercises WHERE id = 'barbell_back_squat'"))
+
+        // Merged metadata; the real video replaces only the untouched seeded search.
+        assertEquals("Mat", string("SELECT equipment FROM exercises WHERE id = 'cat_cow'"))
+        assertEquals("https://www.youtube.com/watch?v=96sQ-N5VBnA", string("SELECT videoUrl FROM exercises WHERE id = 'cat_cow'"))
+        assertEquals("https://example.com/my-own-video", string("SELECT videoUrl FROM exercises WHERE id = 'childs_pose'"))
+    }
+
+    /**
      * INVARIANT 9: a fresh install ([SeedCallback]) and a migrated-from-v1 install
      * (every Migration) must agree on program_rules and metrics content. This is what
      * catches the seed-lives-in-two-places drift the plan calls out as risk #2.
@@ -216,14 +276,25 @@ class MigrationTest {
             AppDatabase::class.java
         ).addCallback(SeedCallback).build()
         val freshRules = fresh.rulesDao().getRules()!!
+        val freshGymPlan = fresh.rulesDao().getRules(2)!!.planText
+        val freshPrograms = fresh.programDao().observeAll().first().map { it.name to it.active }
         fresh.close()
 
         val dbName = "migration-test-fresh-vs-migrated"
         helper.createDatabase(dbName, 1).close()
         val migrated = helper.runMigrationsAndValidate(
-            dbName, 6, true,
-            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6
+            dbName, 7, true,
+            MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7
         )
+
+        migrated.query("SELECT name, active FROM programs ORDER BY id").use { c ->
+            val rows = generateSequence { if (c.moveToNext()) c.getString(0) to (c.getInt(1) == 1) else null }.toList()
+            assertEquals(freshPrograms, rows)
+        }
+        migrated.query("SELECT planText FROM program_rules WHERE id = 2").use { c ->
+            c.moveToFirst()
+            assertEquals(freshGymPlan, c.getString(0))
+        }
 
         migrated.query(
             "SELECT weeks, daysPerWeek, circuitsPerWeekCsv FROM program_rules WHERE id = 1"

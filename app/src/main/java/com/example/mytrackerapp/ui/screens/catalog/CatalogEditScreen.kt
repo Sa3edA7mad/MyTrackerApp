@@ -52,7 +52,9 @@ import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.Exercise
 import com.example.mytrackerapp.domain.model.ExerciseSlot
 import com.example.mytrackerapp.domain.model.TargetType
+import androidx.compose.foundation.layout.FlowRow
 import com.example.mytrackerapp.repo.CatalogRepository
+import com.example.mytrackerapp.ui.screens.library.LEVELS
 import com.example.mytrackerapp.ui.Routes
 import com.example.mytrackerapp.ui.components.ActionRow
 import com.example.mytrackerapp.ui.components.AppIcons
@@ -101,7 +103,14 @@ data class CatalogEditState(
     val videoUrl: String = "",
     val enabled: Boolean = true,
     val isArchived: Boolean = false,
-    val loaded: Boolean = false
+    val loaded: Boolean = false,
+    val equipment: String = "",
+    val level: String = "",
+    val cue: String = "",
+    /** The library video's credit; dropped once the URL is changed away from [creditedUrl]. */
+    val videoTitle: String = "",
+    val videoChannel: String = "",
+    val creditedUrl: String = ""
 ) {
     val isNew: Boolean get() = id == null
 }
@@ -149,7 +158,13 @@ class CatalogEditViewModel(
         videoUrl = videoUrl,
         enabled = enabled,
         isArchived = isArchived,
-        loaded = true
+        loaded = true,
+        equipment = equipment,
+        level = level,
+        cue = cue,
+        videoTitle = videoTitle,
+        videoChannel = videoChannel,
+        creditedUrl = videoUrl
     )
 
     private fun MutableStateFlow<CatalogEditState>.update(transform: (CatalogEditState) -> CatalogEditState) {
@@ -178,7 +193,12 @@ class CatalogEditViewModel(
             defaultLoadKg = s.defaultLoadKg.toDoubleOrNull(),
             defaultBandLevel = s.defaultBandLevel.ifBlank { null },
             progressionStep = s.progressionStep,
-            enabled = s.enabled
+            enabled = s.enabled,
+            equipment = s.equipment.trim(),
+            level = s.level,
+            cue = s.cue.trim(),
+            videoTitle = if (s.videoUrl == s.creditedUrl) s.videoTitle else "",
+            videoChannel = if (s.videoUrl == s.creditedUrl) s.videoChannel else ""
         )
     }
 
@@ -344,6 +364,17 @@ fun CatalogEditScreen(
                     { onChange { s -> s.copy(instructions = it) } },
                     singleLine = false
                 )
+                Spacer(Modifier.height(Spacing.md))
+                LabeledField("Key technique cue", state.cue, { onChange { s -> s.copy(cue = it) } }, singleLine = false)
+                Spacer(Modifier.height(Spacing.md))
+                LabeledField("Equipment", state.equipment, { onChange { s -> s.copy(equipment = it) } })
+
+                SectionHeader("Level")
+                ChoiceRow(
+                    options = listOf("NONE") + LEVELS,
+                    selected = (LEVELS.indexOf(state.level) + 1),
+                    onSelect = { i -> onChange { it.copy(level = if (i == 0) "" else LEVELS[i - 1]) } }
+                )
 
                 SectionHeader("Target")
                 ChoiceRow(
@@ -487,9 +518,12 @@ fun CatalogEditScreen(
 /** A small selectable-chip row shared by the slot/category/target-type pickers on this screen. */
 @Composable
 private fun ChoiceRow(options: List<String>, selected: Int, onSelect: (Int) -> Unit) {
-    Row(
+    // Wraps rather than scrolls: eight categories don't fit one line, and a scroll nested
+    // in the screen's own scroll hides chips from tests' scroll-to.
+    FlowRow(
         Modifier.fillMaxWidth().padding(top = Spacing.xs),
-        horizontalArrangement = Arrangement.spacedBy(Spacing.sm)
+        horizontalArrangement = Arrangement.spacedBy(Spacing.sm),
+        verticalArrangement = Arrangement.spacedBy(Spacing.xs)
     ) {
         options.forEachIndexed { index, label ->
             val isSelected = index == selected

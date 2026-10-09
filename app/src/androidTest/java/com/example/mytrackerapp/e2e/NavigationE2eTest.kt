@@ -11,15 +11,15 @@ class NavigationE2eTest : E2eTest() {
     @Test
     fun nav01_bottomBarSwitchesBetweenTheFourTabs() {
         see("Today")
-        openTab("PROGRAM")
-        see("Program")
+        openTab("PROGRAMS")
+        see("Programs")
         see("4 weeks · 6 days a week · 132 circuits")
         openTab("PROGRESS")
         see("Progress")
         see("Current cycle")
         openTab("LIBRARY")
         see("Library")
-        see("29 moves")
+        see("152 moves")
         openTab("TODAY")
         see("WEEK 1 · DAY 1")
     }

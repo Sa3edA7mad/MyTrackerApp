@@ -89,7 +89,8 @@ import com.example.mytrackerapp.ui.theme.Accent
 
 class SettingsViewModel(
     private val repo: TrackerRepository,
-    private val store: SettingsStore
+    private val store: SettingsStore,
+    private val programs: com.example.mytrackerapp.repo.ProgramRepository
 ) : ViewModel() {
 
     val settings: StateFlow<Settings> = store.settings
@@ -108,7 +109,7 @@ class SettingsViewModel(
     fun export(context: Context, uri: Uri, onResult: (Boolean) -> Unit) {
         viewModelScope.launch {
             val ok = runCatching {
-                val json = repo.exportJson()
+                val json = repo.exportJson(programs.exportAll())
                 withContext(Dispatchers.IO) {
                     context.contentResolver.openOutputStream(uri)?.use { out ->
                         out.write(json.toByteArray())
@@ -124,7 +125,7 @@ class SettingsViewModel(
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                SettingsViewModel(app.container.repo, app.container.settings)
+                SettingsViewModel(app.container.repo, app.container.settings, app.container.programs)
             }
         }
     }
