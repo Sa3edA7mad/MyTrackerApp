@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import com.example.mytrackerapp.data.entity.CircuitResultEntity
 import com.example.mytrackerapp.data.entity.CompletionEntity
 import com.example.mytrackerapp.data.entity.CycleEntity
 import com.example.mytrackerapp.data.entity.CycleRulesEntity
@@ -11,6 +12,7 @@ import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
 import com.example.mytrackerapp.data.entity.MeasurementEntity
 import com.example.mytrackerapp.data.entity.MetricEntity
+import com.example.mytrackerapp.data.entity.ProgramEntity
 import com.example.mytrackerapp.data.entity.ProgramRulesEntity
 import kotlinx.coroutines.flow.Flow
 
@@ -21,6 +23,8 @@ data class CircuitCount(val week: Int, val day: Int, val circuit: Int, val done:
 data class DayCount(val week: Int, val day: Int, val done: Int)
 
 data class ExerciseCount(val exerciseId: String, val done: Int)
+
+data class DoneKey(val exerciseId: String, val setNumber: Int)
 
 /* --------------------------------------------------------------------- DAOs */
 
@@ -83,11 +87,11 @@ interface ExerciseDao {
 @Dao
 interface CycleDao {
 
-    @Query("SELECT * FROM cycles WHERE isActive = 1 ORDER BY id DESC LIMIT 1")
-    fun observeActive(): Flow<CycleEntity?>
+    @Query("SELECT * FROM cycles WHERE isActive = 1 AND programId = :programId ORDER BY id DESC LIMIT 1")
+    fun observeActive(programId: Long = 1): Flow<CycleEntity?>
 
-    @Query("SELECT * FROM cycles WHERE isActive = 1 ORDER BY id DESC LIMIT 1")
-    suspend fun getActive(): CycleEntity?
+    @Query("SELECT * FROM cycles WHERE isActive = 1 AND programId = :programId ORDER BY id DESC LIMIT 1")
+    suspend fun getActive(programId: Long = 1): CycleEntity?
 
     @Query("SELECT * FROM cycles ORDER BY startedAt DESC")
     fun observeAll(): Flow<List<CycleEntity>>
@@ -103,6 +107,60 @@ interface CycleDao {
 
     @Query("UPDATE cycles SET isActive = 0, completedAt = :ts WHERE id = :id")
     suspend fun complete(id: Long, ts: Long)
+}
+
+@Dao
+interface ProgramDao {
+
+    @Query("SELECT * FROM programs ORDER BY id")
+    fun observeAll(): Flow<List<ProgramEntity>>
+
+    @Query("SELECT * FROM programs ORDER BY id")
+    suspend fun getAll(): List<ProgramEntity>
+
+    @Query("SELECT * FROM programs WHERE active = 1 AND archivedAt IS NULL ORDER BY id")
+    fun observeActive(): Flow<List<ProgramEntity>>
+
+    @Query("SELECT * FROM programs WHERE active = 1 AND archivedAt IS NULL ORDER BY id")
+    suspend fun getActive(): List<ProgramEntity>
+
+    @Query("SELECT * FROM programs WHERE id = :id")
+    fun observe(id: Long): Flow<ProgramEntity?>
+
+    @Query("SELECT * FROM programs WHERE id = :id")
+    suspend fun getById(id: Long): ProgramEntity?
+
+    @Insert
+    suspend fun insert(program: ProgramEntity): Long
+
+    @Query("UPDATE programs SET name = :name WHERE id = :id")
+    suspend fun rename(id: Long, name: String)
+
+    @Query("UPDATE programs SET active = :active WHERE id = :id")
+    suspend fun setActive(id: Long, active: Boolean)
+
+    /** Archiving also pauses: an archived program never shows on Today. */
+    @Query("UPDATE programs SET archivedAt = :ts, active = 0 WHERE id = :id")
+    suspend fun archive(id: Long, ts: Long?)
+}
+
+@Dao
+interface CircuitResultDao {
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun upsert(result: CircuitResultEntity)
+
+    @Query(
+        """SELECT * FROM circuit_results
+           WHERE cycleId = :cycleId AND week = :week AND day = :day AND circuit = :circuit"""
+    )
+    fun observe(cycleId: Long, week: Int, day: Int, circuit: Int): Flow<CircuitResultEntity?>
+
+    @Query("SELECT * FROM circuit_results WHERE cycleId = :cycleId")
+    suspend fun getAllForCycle(cycleId: Long): List<CircuitResultEntity>
+
+    @Query("DELETE FROM circuit_results WHERE cycleId = :cycleId")
+    suspend fun deleteForCycle(cycleId: Long)
 }
 
 @Dao
@@ -161,9 +219,16 @@ interface CompletionDao {
     @Query(
         """DELETE FROM completions
            WHERE cycleId = :cycleId AND week = :week AND day = :day
-             AND circuit = :circuit AND exerciseId = :exerciseId"""
+             AND circuit = :circuit AND exerciseId = :exerciseId AND setNumber = :setNumber"""
     )
-    suspend fun delete(cycleId: Long, week: Int, day: Int, circuit: Int, exerciseId: String)
+    suspend fun delete(
+        cycleId: Long,
+        week: Int,
+        day: Int,
+        circuit: Int,
+        exerciseId: String,
+        setNumber: Int = 1
+    )
 
     @Query(
         """SELECT week, day, circuit, COUNT(*) AS done FROM completions
@@ -196,6 +261,13 @@ interface CompletionDao {
         day: Int,
         circuit: Int
     ): Flow<List<String>>
+
+    /** Every ticked (exercise, set) in one circuit slot — what a circuit's done-state reads. */
+    @Query(
+        """SELECT exerciseId, setNumber FROM completions
+           WHERE cycleId = :cycleId AND week = :week AND day = :day AND circuit = :circuit"""
+    )
+    fun observeDoneIn(cycleId: Long, week: Int, day: Int, circuit: Int): Flow<List<DoneKey>>
 
     @Query(
         """SELECT exerciseId FROM completions
@@ -273,6 +345,24 @@ interface CompletionDao {
     )
     fun observeAllTimesForExercise(cycleId: Long, exerciseId: String): Flow<List<Long>>
 
+    /**
+     * [observeAllTimesForExercise] across every program's running cycle — an exercise can
+     * sit in several programs, and its history is the exercise's, not one program's.
+     */
+    @Query(
+        """SELECT completedAt FROM completions
+           WHERE exerciseId = :exerciseId
+             AND cycleId IN (SELECT id FROM cycles WHERE isActive = 1)"""
+    )
+    fun observeActiveTimesForExercise(exerciseId: String): Flow<List<Long>>
+
+    /** Program-circuit completion times in every running cycle — the combined streak. */
+    @Query(
+        """SELECT completedAt FROM completions
+           WHERE circuit >= 1 AND cycleId IN (SELECT id FROM cycles WHERE isActive = 1)"""
+    )
+    fun observeActiveTrainingTimes(): Flow<List<Long>>
+
     @Query("DELETE FROM completions WHERE cycleId = :cycleId")
     suspend fun deleteForCycle(cycleId: Long)
 
@@ -283,7 +373,7 @@ interface CompletionDao {
         """UPDATE completions SET reps = :reps, loadKg = :loadKg, bandLevel = :bandLevel,
            holdSeconds = :holdSeconds, rpe = :rpe, note = :note
            WHERE cycleId = :cycleId AND week = :week AND day = :day
-             AND circuit = :circuit AND exerciseId = :exerciseId"""
+             AND circuit = :circuit AND exerciseId = :exerciseId AND setNumber = :setNumber"""
     )
     suspend fun updateDetail(
         cycleId: Long,
@@ -296,7 +386,8 @@ interface CompletionDao {
         bandLevel: String?,
         holdSeconds: Int?,
         rpe: Int?,
-        note: String?
+        note: String?,
+        setNumber: Int = 1
     )
 
     /** Most recent logged detail for an exercise — used to pre-fill the next set's sheet. */
@@ -308,6 +399,16 @@ interface CompletionDao {
     )
     suspend fun getLastDetail(cycleId: Long, exerciseId: String): CompletionEntity?
 
+    /** [getLastDetail] across every running cycle, so a load logged in one program pre-fills another. */
+    @Query(
+        """SELECT * FROM completions
+           WHERE exerciseId = :exerciseId
+             AND cycleId IN (SELECT id FROM cycles WHERE isActive = 1)
+             AND (reps IS NOT NULL OR loadKg IS NOT NULL OR holdSeconds IS NOT NULL)
+           ORDER BY completedAt DESC LIMIT 1"""
+    )
+    suspend fun getLastActiveDetail(exerciseId: String): CompletionEntity?
+
     /** Every set of this exercise this cycle, logged or not — feeds [summarise]. */
     @Query(
         """SELECT * FROM completions
@@ -315,19 +416,35 @@ interface CompletionDao {
            ORDER BY completedAt ASC"""
     )
     fun observeSetLogs(cycleId: Long, exerciseId: String): Flow<List<CompletionEntity>>
+
+    /** [observeSetLogs] across every running cycle. */
+    @Query(
+        """SELECT * FROM completions
+           WHERE exerciseId = :exerciseId
+             AND cycleId IN (SELECT id FROM cycles WHERE isActive = 1)
+           ORDER BY completedAt ASC"""
+    )
+    fun observeActiveSetLogs(exerciseId: String): Flow<List<CompletionEntity>>
 }
 
 @Dao
 interface RulesDao {
 
-    @Query("SELECT * FROM program_rules WHERE id = 1")
-    fun observeRules(): Flow<ProgramRulesEntity?>
+    @Query("SELECT * FROM program_rules WHERE id = :programId")
+    fun observeRules(programId: Long = 1): Flow<ProgramRulesEntity?>
 
-    @Query("SELECT * FROM program_rules WHERE id = 1")
-    suspend fun getRules(): ProgramRulesEntity?
+    @Query("SELECT * FROM program_rules WHERE id = :programId")
+    suspend fun getRules(programId: Long = 1): ProgramRulesEntity?
 
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun upsert(rules: ProgramRulesEntity)
+
+    /** Units are app-wide; every program's row carries the same pair. */
+    @Query("UPDATE program_rules SET weightUnit = :weightUnit, lengthUnit = :lengthUnit")
+    suspend fun setUnits(weightUnit: String, lengthUnit: String)
+
+    @Query("UPDATE program_rules SET planText = :planText, updatedAt = :ts WHERE id = :programId")
+    suspend fun setPlan(programId: Long, planText: String, ts: Long)
 
     @Query("SELECT * FROM cycle_rules WHERE cycleId = :cycleId")
     suspend fun getCycleRules(cycleId: Long): CycleRulesEntity?

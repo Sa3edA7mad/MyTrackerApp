@@ -13,6 +13,8 @@ import com.example.mytrackerapp.data.entity.MetricEntity
  * Most of the workbook's video links are YouTube *search* URLs rather than specific
  * videos. The search is the exercise name only — the sheet's " exercise proper form"
  * suffix was dropped on request (MIGRATION_5_6 strips it from installed catalogs).
+ * Cat-Cow and Child's Pose carry real videos and metadata merged from the library workbook
+ * (MIGRATION_6_7 applies the same to installed catalogs).
  */
 object SeedData {
 
@@ -294,8 +296,14 @@ object SeedData {
             targetValue = 8,
             perSide = false,
             targetLabel = "8 cycles",
-            videoUrl = search("Cat-Cow"),
-            sortOrder = 107
+            videoUrl = "https://www.youtube.com/watch?v=96sQ-N5VBnA",
+            sortOrder = 107,
+            // Merged from the library workbook, which lists Cat-Cow under Mobility.
+            equipment = "Mat",
+            level = "BEGINNER",
+            cue = "Move with the breath, segment by segment through the spine.",
+            videoTitle = "Cat-Cow Stretch with Sarah Cil",
+            videoChannel = "JAG Physical Therapy"
         ),
         ExerciseEntity(
             id = "easy_air_squat",
@@ -402,8 +410,14 @@ object SeedData {
             targetValue = 45,
             perSide = false,
             targetLabel = "45 sec",
-            videoUrl = search("Child%27s%20Pose"),
-            sortOrder = 207
+            videoUrl = "https://www.youtube.com/watch?v=eqVMAPM00DM",
+            sortOrder = 207,
+            // Merged from the library workbook, which lists Child's Pose under Mobility.
+            equipment = "Mat",
+            level = "BEGINNER",
+            cue = "Knees wide, hips to heels, reach the arms long.",
+            videoTitle = "Extended Child's Pose - Yoga With Adriene",
+            videoChannel = "Yoga With Adriene"
         ),
         ExerciseEntity(
             id = "spinal_twist",
@@ -431,6 +445,9 @@ object SeedData {
             }
         )
     }
+
+    /** The shipped catalog: the 29 program/routine rows plus the 123-row library import. */
+    val CATALOG: List<ExerciseEntity> = ALL_EXERCISES + LibrarySeed.EXERCISES
 
     private const val WEIGHT = "WEIGHT"
     private const val LENGTH = "LENGTH"

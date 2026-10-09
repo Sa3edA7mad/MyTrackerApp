@@ -1,13 +1,18 @@
 package com.example.mytrackerapp.domain.model
 
+import com.example.mytrackerapp.domain.CircuitPlan
 import com.example.mytrackerapp.domain.youtubeSearchUrl
 
-enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH }
+/** The first four are the Home program's; the rest are the library workbook's sheets. */
+enum class Category { BODYWEIGHT, BAND, WARMUP, STRETCH, GYM, CROSSFIT, MOBILITY, CORE }
 
 enum class TargetType { REPS, SECONDS }
 
-/** Decides circuit membership. Distinct from [Category], which is only the display badge. */
-enum class ExerciseSlot { PROGRAM, WARMUP, STRETCH }
+/**
+ * Decides membership of slot-backed circuits (the Home program's). Distinct from [Category],
+ * which is only the display badge. LIBRARY is in no slot list — programs pick it explicitly.
+ */
+enum class ExerciseSlot { PROGRAM, WARMUP, STRETCH, LIBRARY }
 
 data class Exercise(
     val id: String,
@@ -29,7 +34,13 @@ data class Exercise(
     val tracksLoad: Boolean = false,
     val defaultLoadKg: Double? = null,
     val defaultBandLevel: String? = null,
-    val progressionStep: Int = 0
+    val progressionStep: Int = 0,
+    val equipment: String = "",
+    /** BEGINNER | INTERMEDIATE | ADVANCED, or empty. */
+    val level: String = "",
+    val cue: String = "",
+    val videoTitle: String = "",
+    val videoChannel: String = ""
 ) {
     val isArchived: Boolean get() = archivedAt != null
 }
@@ -48,7 +59,16 @@ val Exercise.formVideoUrl: String get() = videoUrl.ifBlank { youtubeSearchUrl(na
 fun Exercise.targetForWeek(week: Int): Int = targetValue + progressionStep * (week - 1)
 
 /** How far through one circuit the user is. [total] is the circuit's own exercise count. */
-data class CircuitProgress(val index: Int, val done: Int, val total: Int) {
+data class CircuitProgress(
+    val index: Int,
+    val done: Int,
+    val total: Int,
+    /** The plan circuit's name. "Circuit" (Home's) means unnamed. */
+    val name: String = ""
+) {
+    /** Extra label for a named circuit; null for Home's plain numbered circuits. */
+    val subtitle: String? get() = name.takeIf { it.isNotBlank() && it != "Circuit" }
+
     val isComplete: Boolean get() = done >= total
     val isStarted: Boolean get() = done > 0
 }
@@ -68,7 +88,9 @@ data class DayState(
     val warmUpEnabled: Boolean = true,
     val stretchEnabled: Boolean = true,
     val warmUpCount: Int = 8,
-    val stretchCount: Int = 8
+    val stretchCount: Int = 8,
+    /** False when the day's circuits differ in size, so "N exercises each" would be wrong. */
+    val uniformCircuits: Boolean = true
 ) {
     val circuitsTotal: Int get() = circuits.size
     val circuitsDone: Int get() = circuits.count { it.isComplete }
@@ -100,10 +122,16 @@ data class CircuitView(
     val day: Int,
     /** >= 1 program circuit, or CIRCUIT_WARMUP / CIRCUIT_STRETCH. */
     val circuit: Int,
+    /** One entry per tick. For a multi-set exercise each set is its own entry, whose `id`
+     *  is the step key (`id#set`) — see [com.example.mytrackerapp.domain.CircuitStep]. */
     val exercises: List<Exercise>,
     val doneIds: Set<String>,
     /** False for a future day opened as a read-only preview (INVARIANT 4). */
-    val editable: Boolean = true
+    val editable: Boolean = true,
+    /** "Set 2 of 5" by step key, for multi-set steps only. */
+    val setLabels: Map<String, String> = emptyMap(),
+    /** The circuit's name, format and rest. Null for routines and pre-program cycles. */
+    val plan: CircuitPlan? = null
 ) {
     val done: Int get() = exercises.count { it.id in doneIds }
     val total: Int get() = exercises.size
@@ -134,7 +162,8 @@ data class WeekState(
     val isCurrent: Boolean,
     val exercisesPerCircuit: Int
 ) {
-    val circuitsTotal: Int get() = circuitsPerDay * days.size
+    /** Counted per day: with a rotation, days can run different numbers of circuits. */
+    val circuitsTotal: Int get() = days.sumOf { it.circuits.size }
 
     /** Counts complete circuits directly rather than dividing, so this stays correct even
      *  when circuits carry different sizes. Requires [DaySummary.circuits] to be populated. */
@@ -202,3 +231,11 @@ sealed interface UiState<out T> {
     data class Ready<T>(val data: T) : UiState<T>
     data class Error(val message: String) : UiState<Nothing>
 }
+
+/** A training program. Several can be [active] at once; archived ones keep their history. */
+data class Program(
+    val id: Long,
+    val name: String,
+    val active: Boolean,
+    val archived: Boolean
+)

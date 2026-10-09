@@ -43,7 +43,14 @@ import com.example.mytrackerapp.domain.model.DaySummary
 import com.example.mytrackerapp.domain.model.ExerciseTally
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.domain.model.WeekState
-import com.example.mytrackerapp.repo.TrackerRepository
+import com.example.mytrackerapp.di.AppContainer
+import com.example.mytrackerapp.domain.model.Program
+import com.example.mytrackerapp.ui.components.ChipRow
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.map
 import com.example.mytrackerapp.ui.components.ActionRow
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.components.SectionHeader
@@ -64,17 +71,36 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.stateIn
 import com.example.mytrackerapp.ui.theme.glassBackdrop
 
-class ProgressViewModel(repo: TrackerRepository) : ViewModel() {
+/** Stats for the selected active program. The streak inside is combined across programs. */
+@OptIn(ExperimentalCoroutinesApi::class)
+class ProgressViewModel(private val container: AppContainer) : ViewModel() {
 
-    val state: StateFlow<UiState<CycleStats>> = repo.observeCycleStats()
+    private val selected = MutableStateFlow<Long?>(null)
+
+    /** Every non-archived program, so a paused one's stats stay reachable. Active ones first. */
+    val programs: StateFlow<List<Program>> = container.programs.observeAll()
+        .map { list -> list.filter { !it.archived }.sortedWith(compareBy({ !it.active }, { it.id })) }
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), emptyList())
+
+    /** With nothing to pick, Home's stats still show — its history doesn't vanish when paused. */
+    val programId: StateFlow<Long> = combine(programs, selected) { list, chosen ->
+        (list.firstOrNull { it.id == chosen } ?: list.firstOrNull())?.id ?: 1L
+    }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), 1L)
+
+    val state: StateFlow<UiState<CycleStats>> = programId
+        .flatMapLatest { container.repoFor(it).observeCycleStats() }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), UiState.Loading)
+
+    fun select(id: Long) {
+        selected.value = id
+    }
 
     companion object {
         val Factory: ViewModelProvider.Factory = viewModelFactory {
             initializer {
                 val app = this[ViewModelProvider.AndroidViewModelFactory.APPLICATION_KEY]
                         as TrackerApplication
-                ProgressViewModel(app.container.repo)
+                ProgressViewModel(app.container)
             }
         }
     }
@@ -86,6 +112,8 @@ fun ProgressRoute(
     viewModel: ProgressViewModel = viewModel(factory = ProgressViewModel.Factory)
 ) {
     val state by viewModel.state.collectAsState()
+    val programs by viewModel.programs.collectAsState()
+    val programId by viewModel.programId.collectAsState()
 
     when (val s = state) {
         is UiState.Loading -> LoadingState()
@@ -93,12 +121,24 @@ fun ProgressRoute(
             Text(s.message, style = MaterialTheme.typography.bodyLarge, color = TextSecondary)
         }
 
-        is UiState.Ready -> ProgressScreen(s.data, onOpenMeasure)
+        is UiState.Ready -> ProgressScreen(
+            s.data,
+            onOpenMeasure,
+            programs = programs,
+            selectedProgram = programs.firstOrNull { it.id == programId },
+            onSelectProgram = { viewModel.select(it.id) }
+        )
     }
 }
 
 @Composable
-fun ProgressScreen(stats: CycleStats, onOpenMeasure: () -> Unit = {}) {
+fun ProgressScreen(
+    stats: CycleStats,
+    onOpenMeasure: () -> Unit = {},
+    programs: List<Program> = emptyList(),
+    selectedProgram: Program? = null,
+    onSelectProgram: (Program) -> Unit = {}
+) {
     Column(
         Modifier
             .fillMaxSize()
@@ -113,6 +153,10 @@ fun ProgressScreen(stats: CycleStats, onOpenMeasure: () -> Unit = {}) {
             style = MaterialTheme.typography.bodyMedium,
             color = TextTertiary
         )
+        if (programs.size > 1) {
+            Spacer(Modifier.height(Spacing.sm))
+            ChipRow(programs, selectedProgram, { it.name + if (it.active) "" else " · paused" }, onSelectProgram)
+        }
 
         Spacer(Modifier.height(Spacing.base))
         Row(horizontalArrangement = Arrangement.spacedBy(Spacing.sm)) {

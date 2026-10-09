@@ -29,7 +29,7 @@ class ProgramTotalsTest {
         week = week,
         day = day,
         done = done,
-        total = rules.exercisesPerDay(week),
+        total = rules.exercisesPerDay(week, day),
         closed = closed,
         circuits = circuitsFor(week, done)
     )
@@ -37,7 +37,7 @@ class ProgramTotalsTest {
     private fun fullWeek(week: Int) = WeekState(
         week = week,
         circuitsPerDay = rules.circuitsForWeek(week),
-        days = (1..rules.daysPerWeek).map { day(week, it, rules.exercisesPerDay(week)) },
+        days = (1..rules.daysPerWeek).map { day(week, it, rules.exercisesPerDay(week, it)) },
         isCurrent = false,
         exercisesPerCircuit = rules.exercisesPerCircuit
     )

@@ -185,9 +185,8 @@ fun ChecklistMode(
                 .padding(horizontal = Spacing.lg),
             verticalArrangement = Arrangement.spacedBy(0.dp)
         ) {
-            listOf(
-                Category.BODYWEIGHT, Category.BAND, Category.WARMUP, Category.STRETCH
-            ).forEach { category ->
+            // Every category, not just Home's four — a program can hold Gym, CrossFit… exercises.
+            Category.entries.forEach { category ->
                 val list = grouped[category].orEmpty()
                 if (list.isNotEmpty()) {
                     item(key = "header-${category.name}") {
@@ -200,6 +199,7 @@ fun ChecklistMode(
                         ChecklistRow(
                             exercise = exercise,
                             done = exercise.id in view.doneIds,
+                            setLabel = view.setLabels[exercise.id],
                             hapticsEnabled = hapticsEnabled,
                             onToggle = { checked -> onToggle(exercise.id, checked) },
                             onOpen = { onOpenExercise(exercise.id) }
@@ -246,6 +246,7 @@ fun ChecklistMode(
 private fun ChecklistRow(
     exercise: Exercise,
     done: Boolean,
+    setLabel: String? = null,
     hapticsEnabled: Boolean,
     onToggle: (Boolean) -> Unit,
     onOpen: () -> Unit
@@ -274,7 +275,9 @@ private fun ChecklistRow(
                 )
                 // The name is a separate tap target, so the checkbox needs its own label or
                 // TalkBack reads an anonymous "checkbox".
-                .semantics { contentDescription = "Mark ${exercise.name} done" },
+                .semantics {
+                    contentDescription = "Mark ${exercise.name}" + (setLabel?.let { " ${it.lowercase()}" } ?: "") + " done"
+                },
             contentAlignment = Alignment.Center
         ) {
             CheckMark(done = done, enabled = true)
@@ -289,15 +292,19 @@ private fun ChecklistRow(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(Spacing.md)
         ) {
-            Text(
-                text = exercise.name,
-                style = MaterialTheme.typography.titleMedium,
-                color = if (done) TextTertiary else TextPrimary,
-                textDecoration = if (done) TextDecoration.LineThrough else null,
-                maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
-                modifier = Modifier.weight(1f)
-            )
+            Column(Modifier.weight(1f)) {
+                Text(
+                    text = exercise.name,
+                    style = MaterialTheme.typography.titleMedium,
+                    color = if (done) TextTertiary else TextPrimary,
+                    textDecoration = if (done) TextDecoration.LineThrough else null,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis
+                )
+                if (setLabel != null) {
+                    Text(setLabel, style = MaterialTheme.typography.bodyMedium, color = TextTertiary)
+                }
+            }
             TargetBadge(exercise.targetLabel)
         }
         Box(

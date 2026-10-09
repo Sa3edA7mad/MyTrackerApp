@@ -6,9 +6,14 @@ import com.example.mytrackerapp.data.db.ExerciseDao
 import com.example.mytrackerapp.data.db.RulesDao
 import com.example.mytrackerapp.data.entity.CycleRulesEntity
 import com.example.mytrackerapp.data.entity.ProgramRulesEntity
+import com.example.mytrackerapp.data.seed.StarterPrograms
 import com.example.mytrackerapp.domain.ApplyImpact
+import com.example.mytrackerapp.domain.PlanCodec
+import com.example.mytrackerapp.domain.PlanValidation
 import com.example.mytrackerapp.domain.Position
+import com.example.mytrackerapp.domain.ProgramPlan
 import com.example.mytrackerapp.domain.ProgramRules
+import com.example.mytrackerapp.domain.resolve
 import com.example.mytrackerapp.domain.RuleImpact
 import com.example.mytrackerapp.domain.RuleValidation
 import com.example.mytrackerapp.domain.UnitPrefs
@@ -29,51 +34,102 @@ fun ProgramRulesEntity.toDomain(): ProgramRules = ProgramRules(
     stretchEnabled = stretchEnabled,
     countRoutinesInTotals = countRoutinesInTotals,
     lockFutureDays = lockFutureDays
-    // exercisesPerCircuit/warmUpCount/stretchCount are left at their defaults here; the
-    // draft's real values are filled in by RulesRepository from the live catalog (T13).
+    // exercisesPerCircuit/warmUpCount/stretchCount/circuitSizes are left at their defaults
+    // here; the draft's real values are filled in by RulesRepository from its plan.
 )
+
+/** The draft plan. Blank text is the original catalog-slot plan (Home). */
+fun ProgramRulesEntity.plan(): ProgramPlan = PlanCodec.decode(planText) ?: ProgramPlan.SLOT_DEFAULT
+
+/**
+ * The plan frozen with a cycle. Null only for a cycle that predates snapshots entirely,
+ * which reads the live catalog slots instead.
+ */
+fun CycleRulesEntity.plan(): ProgramPlan? = PlanCodec.decode(planText)
+    ?: programExerciseIdsCsv.split(",").filter { it.isNotBlank() }
+        .takeIf { it.isNotEmpty() }?.let { ProgramPlan.legacy(it) }
 
 fun ProgramRulesEntity.toUnitPrefs(): UnitPrefs = UnitPrefs(
     weight = runCatching { WeightUnit.valueOf(weightUnit) }.getOrDefault(WeightUnit.KG),
     length = runCatching { LengthUnit.valueOf(lengthUnit) }.getOrDefault(LengthUnit.CM)
 )
 
-fun CycleRulesEntity.toDomain(): ProgramRules = ProgramRules(
-    weeks = weeks,
-    daysPerWeek = daysPerWeek,
-    circuitsPerWeek = ProgramRules.parseCircuitsCsv(circuitsPerWeekCsv),
-    exercisesPerCircuit = exercisesPerCircuit,
-    warmUpCount = warmUpCount,
-    stretchCount = stretchCount,
-    dayRolloverHour = dayRolloverHour,
-    warmUpEnabled = warmUpEnabled,
-    stretchEnabled = stretchEnabled,
-    countRoutinesInTotals = countRoutinesInTotals,
-    lockFutureDays = lockFutureDays
-)
+fun CycleRulesEntity.toDomain(): ProgramRules {
+    // Snapshots from before programs carry no plan text: one uniform circuit, as they always read.
+    val plan = PlanCodec.decode(planText)
+    return ProgramRules(
+        weeks = weeks,
+        daysPerWeek = daysPerWeek,
+        circuitsPerWeek = ProgramRules.parseCircuitsCsv(circuitsPerWeekCsv),
+        exercisesPerCircuit = exercisesPerCircuit,
+        warmUpCount = warmUpCount,
+        stretchCount = stretchCount,
+        dayRolloverHour = dayRolloverHour,
+        warmUpEnabled = warmUpEnabled,
+        stretchEnabled = stretchEnabled,
+        countRoutinesInTotals = countRoutinesInTotals,
+        lockFutureDays = lockFutureDays,
+        circuitSizes = plan?.circuits?.map { it.size },
+        dayRotations = plan?.dayRotations().orEmpty()
+    )
+}
 
 /**
- * Rule read/write, snapshot, and apply-to-cycle. The only writer of `program_rules` and
- * `cycle_rules`.
+ * Rule and plan read/write, snapshot, and apply-to-cycle for one program. The only writer
+ * of `program_rules` and `cycle_rules`.
+ *
+ * @param programId whose rules row this reads and writes (1 = Home, the default).
  */
 class RulesRepository(
     private val dao: RulesDao,
     private val exercises: ExerciseDao,
     private val days: DayDao,
-    private val completions: CompletionDao
+    private val completions: CompletionDao,
+    val programId: Long = StarterPrograms.HOME_ID
 ) {
 
-    /** The editable draft, with the derived catalog counts (T13) filled in. */
-    fun observeDraft(): Flow<ProgramRules> = dao.observeRules().map { entity ->
-        (entity ?: defaultEntity()).toDomain().withDerivedCounts()
+    /** The editable draft, with the plan-derived counts filled in. */
+    fun observeDraft(): Flow<ProgramRules> = dao.observeRules(programId).map { entity ->
+        (entity ?: defaultEntity()).let { it.toDomain().withDerivedCounts(it.plan()) }
     }
 
     suspend fun getDraft(): ProgramRules = withContext(Dispatchers.IO) {
-        (dao.getRules() ?: defaultEntity()).toDomain().withDerivedCounts()
+        (dao.getRules(programId) ?: defaultEntity()).let { it.toDomain().withDerivedCounts(it.plan()) }
     }
 
+    /** Units are app-wide, so any program's row answers for all of them. */
     fun observeUnits(): Flow<UnitPrefs> =
-        dao.observeRules().map { (it ?: defaultEntity()).toUnitPrefs() }
+        dao.observeRules(programId).map { (it ?: defaultEntity()).toUnitPrefs() }
+
+    /* ------------------------------------------------------------------ plan */
+
+    /** The draft plan, unresolved — slot-backed circuits stay slot-backed. */
+    fun observePlan(): Flow<ProgramPlan> =
+        dao.observeRules(programId).map { (it ?: defaultEntity()).plan() }
+
+    suspend fun getPlan(): ProgramPlan = withContext(Dispatchers.IO) {
+        (dao.getRules(programId) ?: defaultEntity()).plan()
+    }
+
+    /**
+     * Saves the draft plan and returns what is still wrong with it. An unfinished plan saves —
+     * it is a draft, built a step at a time — but cannot be activated or applied to a cycle.
+     * Like rules, a running cycle keeps its snapshot until applied.
+     */
+    suspend fun savePlan(plan: ProgramPlan): List<String> = withContext(Dispatchers.IO) {
+        if (dao.getRules(programId) == null) dao.upsert(defaultEntity())
+        dao.setPlan(programId, PlanCodec.encode(plan), System.currentTimeMillis())
+        PlanValidation.validate(plan)
+    }
+
+    /** The frozen plan text of [cycleId], for the export. Blank for cycles that predate plans. */
+    suspend fun cyclePlanText(cycleId: Long): String = withContext(Dispatchers.IO) {
+        dao.getCycleRules(cycleId)?.planText.orEmpty()
+    }
+
+    /** The plan a cycle was snapshotted with (INVARIANT 7); null predates snapshots. */
+    fun observeCyclePlan(cycleId: Long): Flow<ProgramPlan?> =
+        dao.observeCycleRules(cycleId).map { it?.plan() }
 
     /** INVARIANT 7. Falls back to [ProgramRules.DEFAULT] when a cycle predates snapshots. */
     suspend fun rulesFor(cycleId: Long): ProgramRules = withContext(Dispatchers.IO) {
@@ -93,22 +149,23 @@ class RulesRepository(
             entity?.programExerciseIdsCsv?.split(",")?.filter { it.isNotBlank() } ?: emptyList()
         }
 
-    /** Fills exercisesPerCircuit/warmUpCount/stretchCount from the live, enabled catalog. */
-    private suspend fun ProgramRules.withDerivedCounts(): ProgramRules {
-        val program = exercises.countBySlot("PROGRAM")
-        val warmUp = exercises.countBySlot("WARMUP")
-        val stretch = exercises.countBySlot("STRETCH")
+    /** Fills the circuit shape and routine counts from [plan] resolved against the live catalog. */
+    private suspend fun ProgramRules.withDerivedCounts(plan: ProgramPlan): ProgramRules {
+        val resolved = plan.resolve(exercises.getAll().map { it.toDomain() })
+        val sizes = resolved.circuits.map { it.size }
         return copy(
-            exercisesPerCircuit = if (program > 0) program else exercisesPerCircuit,
-            warmUpCount = if (warmUp > 0) warmUp else warmUpCount,
-            stretchCount = if (stretch > 0) stretch else stretchCount
+            exercisesPerCircuit = sizes.firstOrNull() ?: 0,
+            warmUpCount = resolved.warmUp.size,
+            stretchCount = resolved.stretch.size,
+            circuitSizes = sizes,
+            dayRotations = resolved.dayRotations()
         )
     }
 
     private fun defaultEntity(): ProgramRulesEntity {
-        val d = ProgramRules.DEFAULT
+        val d = StarterPrograms.defaultRulesFor(programId)
         return ProgramRulesEntity(
-            id = 1,
+            id = programId.toInt(),
             weeks = d.weeks,
             daysPerWeek = d.daysPerWeek,
             circuitsPerWeekCsv = ProgramRules.circuitsCsv(d.circuitsPerWeek),
@@ -129,9 +186,10 @@ class RulesRepository(
             val errors = RuleValidation.validate(rules)
             if (errors.isNotEmpty()) return@withContext errors
 
+            val planText = dao.getRules(programId)?.planText.orEmpty()
             dao.upsert(
                 ProgramRulesEntity(
-                    id = 1,
+                    id = programId.toInt(),
                     weeks = rules.weeks,
                     daysPerWeek = rules.daysPerWeek,
                     circuitsPerWeekCsv = ProgramRules.circuitsCsv(rules.circuitsPerWeek),
@@ -142,9 +200,11 @@ class RulesRepository(
                     lockFutureDays = rules.lockFutureDays,
                     weightUnit = units.weight.name,
                     lengthUnit = units.length.name,
-                    updatedAt = System.currentTimeMillis()
+                    updatedAt = System.currentTimeMillis(),
+                    planText = planText
                 )
             )
+            dao.setUnits(units.weight.name, units.length.name)
             emptyList()
         }
 
@@ -169,28 +229,32 @@ class RulesRepository(
     /** INVARIANT 7/8: re-snapshots [cycleId] from the current draft. Deletes no completions. */
     suspend fun applyDraftToCycle(cycleId: Long): List<String> = withContext(Dispatchers.IO) {
         val draft = getDraft()
-        val errors = RuleValidation.validate(draft)
+        val errors = RuleValidation.validate(draft) + PlanValidation.validate(getPlan())
         if (errors.isNotEmpty()) return@withContext errors
         snapshotRules(cycleId, draft)
         emptyList()
     }
 
-    /** Rewrites the draft to [ProgramRules.DEFAULT]. Does not touch any cycle. */
+    /**
+     * Rewrites the draft rules to this program's defaults and the units to kg/cm. Keeps the
+     * plan — circuits are edited, not "restored". Does not touch any cycle.
+     */
     suspend fun restoreDefaultRules() = withContext(Dispatchers.IO) {
-        dao.upsert(defaultEntity())
+        val planText = dao.getRules(programId)?.planText.orEmpty()
+        dao.upsert(defaultEntity().copy(planText = planText))
+        dao.setUnits(WeightUnit.KG.name, LengthUnit.CM.name)
     }
 
     /**
      * Writes [rules] (defaulting to the current draft) as [cycleId]'s frozen snapshot,
-     * including the program's exercise composition at this moment (INVARIANT 7).
+     * including the program's resolved circuit plan at this moment (INVARIANT 7).
      */
     suspend fun snapshotRules(cycleId: Long, rules: ProgramRules? = null) =
         withContext(Dispatchers.IO) {
             val effective = rules ?: getDraft()
-            val programIds = exercises.getActive()
-                .filter { it.slot == "PROGRAM" && it.enabled }
-                .sortedBy { it.sortOrder }
-                .joinToString(",") { it.id }
+            val resolved = getPlan().resolve(exercises.getAll().map { it.toDomain() })
+            val programIds = resolved.circuits.firstOrNull()?.items.orEmpty()
+                .joinToString(",") { it.exerciseId }
 
             dao.upsertCycleRules(
                 CycleRulesEntity(
@@ -207,7 +271,8 @@ class RulesRepository(
                     countRoutinesInTotals = effective.countRoutinesInTotals,
                     lockFutureDays = effective.lockFutureDays,
                     programExerciseIdsCsv = programIds,
-                    snapshotAt = System.currentTimeMillis()
+                    snapshotAt = System.currentTimeMillis(),
+                    planText = PlanCodec.encode(resolved)
                 )
             )
         }

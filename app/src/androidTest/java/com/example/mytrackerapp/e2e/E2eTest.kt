@@ -102,10 +102,17 @@ abstract class E2eTest {
             setKeepScreenOn(true)
             setAutoAdvanceTimer(true)
             setThemeMode(ThemeMode.SYSTEM)
+            setTodayProgramId(null)
         }
     }
 
     /* ------------------------------------------------------------ arranging */
+
+    /** Gym (program 2) and CrossFit (program 3) are switched on, so Today has three program chips. */
+    protected suspend fun activateStarters() {
+        container.programs.setActive(2, true).getOrThrow()
+        container.programs.setActive(3, true).getOrThrow()
+    }
 
     protected val programIds: List<String>
         get() = runBlocking {

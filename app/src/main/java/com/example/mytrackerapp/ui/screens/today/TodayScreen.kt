@@ -45,6 +45,7 @@ import com.example.mytrackerapp.domain.model.TodayView
 import com.example.mytrackerapp.domain.model.UiState
 import com.example.mytrackerapp.ui.RoutineType
 import com.example.mytrackerapp.ui.components.AppIcons
+import com.example.mytrackerapp.ui.components.ChipRow
 import com.example.mytrackerapp.ui.components.CircuitCard
 import com.example.mytrackerapp.ui.components.CircuitCardState
 import com.example.mytrackerapp.ui.components.GhostButton
@@ -73,29 +74,82 @@ import com.example.mytrackerapp.ui.theme.glassBackdrop
 
 @Composable
 fun TodayRoute(
-    onOpenCircuit: (week: Int, day: Int, circuit: Int) -> Unit,
-    onOpenRoutine: (RoutineType) -> Unit,
+    onOpenCircuit: (programId: Long, week: Int, day: Int, circuit: Int) -> Unit,
+    onOpenRoutine: (programId: Long, RoutineType) -> Unit,
     onOpenSettings: () -> Unit,
-    onCycleComplete: () -> Unit,
+    onCycleComplete: (programId: Long) -> Unit,
+    onOpenPrograms: () -> Unit = {},
     viewModel: TodayViewModel = viewModel(factory = TodayViewModel.Factory)
 ) {
     val state by viewModel.state.collectAsState()
 
-    when (val s = state) {
-        is UiState.Loading -> LoadingState()
-        is UiState.Error -> ErrorState(s.message)
-        is UiState.Ready -> when (val view = s.data) {
-            is TodayView.CycleComplete -> CycleFinishedState(view.days, onCycleComplete)
+    val ui = (state as? UiState.Ready)?.data
+    if (ui == null) {
+        LoadingState()
+        return
+    }
+    val programId = ui.programId
+    if (programId == null) {
+        NoActiveProgramState(onOpenPrograms)
+        return
+    }
 
-            is TodayView.Active -> TodayScreen(
-                day = view.day,
-                onOpenCircuit = { circuit -> onOpenCircuit(view.day.week, view.day.day, circuit) },
-                onOpenRoutine = onOpenRoutine,
-                onOpenSettings = onOpenSettings,
-                onEndDayEarly = { viewModel.closeDayEarly(view.day.week, view.day.day) },
-                onSkipStretch = { viewModel.skipStretch(view.day.week, view.day.day) }
+    Column(Modifier.fillMaxSize()) {
+        // With one active program Today looks exactly as it always did; with several, a chip
+        // row picks which program's day is shown.
+        if (ui.programs.size > 1) {
+            ChipRow(
+                options = ui.programs,
+                selected = ui.programs.firstOrNull { it.id == programId },
+                label = { it.name },
+                onSelect = { viewModel.select(it.id) },
+                modifier = Modifier.padding(horizontal = Spacing.lg, vertical = Spacing.sm)
             )
         }
+        Box(Modifier.weight(1f)) {
+            when (val s = ui.today) {
+                is UiState.Loading -> LoadingState()
+                is UiState.Error -> ErrorState(s.message)
+                is UiState.Ready -> when (val view = s.data) {
+                    is TodayView.CycleComplete -> CycleFinishedState(view.days) { onCycleComplete(programId) }
+
+                    is TodayView.Active -> TodayScreen(
+                        day = view.day,
+                        onOpenCircuit = { circuit -> onOpenCircuit(programId, view.day.week, view.day.day, circuit) },
+                        onOpenRoutine = { type -> onOpenRoutine(programId, type) },
+                        onOpenSettings = onOpenSettings,
+                        onEndDayEarly = { viewModel.closeDayEarly(programId, view.day.week, view.day.day) },
+                        onSkipStretch = { viewModel.skipStretch(programId, view.day.week, view.day.day) }
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun NoActiveProgramState(onOpenPrograms: () -> Unit) {
+    Column(Modifier.fillMaxSize()) {
+        Column(
+            Modifier.weight(1f).padding(horizontal = Spacing.lg),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                "No active program",
+                style = MaterialTheme.typography.displayMedium,
+                color = TextPrimary,
+                textAlign = TextAlign.Center
+            )
+            Spacer(Modifier.height(Spacing.md))
+            Text(
+                "Every program is paused. Turn one on in Programs to see today's training.",
+                style = MaterialTheme.typography.bodyLarge,
+                color = TextSecondary,
+                textAlign = TextAlign.Center
+            )
+        }
+        StickyCtaBar { PrimaryButton("Open programs", onOpenPrograms) }
     }
 }
 
@@ -142,6 +196,7 @@ fun TodayScreen(
                     index = circuit.index,
                     done = circuit.done,
                     total = circuit.total,
+                    subtitle = circuit.subtitle,
                     state = when {
                         circuit.isComplete -> CircuitCardState.DONE
                         circuit.index == nextCircuit -> CircuitCardState.ACTIVE
@@ -245,7 +300,10 @@ private fun Header(day: DayState, onOpenSettings: () -> Unit, onEndDayEarly: () 
             )
             Text("Today", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
             Text(
-                "${day.circuitsTotal} circuits · ${day.exercisesPerCircuit} exercises each",
+                "${day.circuitsTotal} circuit${if (day.circuitsTotal == 1) "" else "s"} · " +
+                    if (day.circuitsTotal == 1) "${day.exercisesTotal} exercises"
+                    else if (day.uniformCircuits) "${day.exercisesPerCircuit} exercises each"
+                    else "${day.exercisesTotal} exercises",
                 style = MaterialTheme.typography.bodyMedium,
                 color = TextTertiary
             )

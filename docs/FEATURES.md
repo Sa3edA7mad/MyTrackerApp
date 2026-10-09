@@ -6,7 +6,7 @@ emulator. Every test case has a stable ID, exact on-screen text, and the expecte
 automated test exists, it is named next to the case.
 
 - **Audience:** human testers, LLM test agents, and developers checking a change for regressions.
-- **App version covered:** database schema v6, commit range up to this document's commit.
+- **App version covered:** database schema v7 (programs), commit range up to this document's commit.
 - **Scope:** every user-visible feature, plus the data rules behind the numbers on screen.
 
 ---
@@ -41,8 +41,8 @@ automated test exists, it is named next to the case.
 ./gradlew connectedDebugAndroidTest
 ```
 
-- `testDebugUnitTest`: about 128 JVM tests of the pure domain logic (rules, stats, units). It runs in seconds and needs no device.
-- `connectedDebugAndroidTest`: about 200 on-device tests, about 9 minutes on a Pixel emulator. It covers DAO, migration and
+- `testDebugUnitTest`: about 151 JVM tests of the pure domain logic (rules, stats, units). It runs in seconds and needs no device.
+- `connectedDebugAndroidTest`: about 238 on-device tests, about 5 minutes on a Pixel emulator. It covers DAO, migration and
   repository tests, **plus the end-to-end UI suite** in `app/src/androidTest/.../e2e/`. That suite drives the real `MainActivity`
   against the real database and DataStore.
 - Run only the UI suite: add `-Pandroid.testInstrumentationRunnerArguments.package=com.example.mytrackerapp.e2e`.
@@ -92,11 +92,14 @@ TOD-02  FAIL     CTA read "START CIRCUIT 1", expected "WARM UP, THEN CIRCUIT 1" 
 | **Settled day** | A day where every circuit exercise is done **and** its stretch is done or skipped (when stretch is enabled), **or** the day was ended early. Settling moves the counter to the next day. |
 | **Current day** | The first unsettled day. Days after it are **future days**: locked by default, readable as a preview. |
 | **End day early / closed** | Settles a partly done day on purpose. The finished work is kept. |
-| **Draft rules** | The editable rule set (Settings → Program rules). Saving only affects the **next** cycle. |
+| **Draft rules** | The editable rule set (Settings → Program rules for Home; any program's from its editor → Rules). Saving only affects the **next** cycle. |
 | **Snapshot** | The frozen copy of the rules and program composition a cycle runs on. It changes only when you tap `APPLY TO CURRENT CYCLE`. |
 | **Orphaned completion** | A completion that no longer fits the rules (for example, its circuit was removed). It is kept but excluded from every total. |
 | **Archive** | Soft delete. The item leaves the rotation and lists, but its history stays readable. |
 | **Guided mode / list mode** | Two ways to run a circuit: one exercise at a time (guided, the default), or a flat checklist (list). |
+| **Program** | Home 4-Week, Gym Strength, CrossFit Conditioning, or one you create. Any number can be **active** (shown on Today); each has its own cycle, rules and plan. Cases outside PGM are about Home, the only active program on a fresh install. |
+| **Plan** | A program's named circuits, which circuit(s) each day runs, and its warm-up and stretch lists. Home's circuits are *slot-backed*: every enabled exercise in the Library's Program / Warm-up / Stretch slot. |
+| **Set** | A multi-set exercise is one tick per set (`SET 2 OF 5`). Home's exercises are all one set. |
 
 **Reference numbers for the shipped (default) program.** Use these as the expected values.
 
@@ -110,7 +113,7 @@ TOD-02  FAIL     CTA read "START CIRCUIT 1", expected "WARM UP, THEN CIRCUIT 1" 
 | Exercises per week, weeks 1–4 | 312, 390, 468, 546 |
 | Exercises per cycle | **1716** |
 | Warm-up moves / stretches | 8 / 8. They are **not** counted in totals by default. |
-| Catalog size | **29** (13 program + 8 warm-up + 8 stretch) |
+| Catalog size | **152**: Home's 29 (13 program + 8 warm-up + 8 stretch) + 123 library exercises (Gym 32, CrossFit 32, Mobility 29, Core 30; Cat-Cow and Child's Pose were merged into Home's rows) |
 | Default metrics | 17, of which **9** are enabled: Body weight, Body fat, Height, Chest, Upper arm (R), Waist, Hips, Thigh (R), Resting heart rate |
 | Day rollover hour | 04:00. A set done at 01:00 counts for the previous calendar day. |
 | Percent | Integer division (floor). For example 52/1716 = 3 %, and 13/1716 = 0 %. |
@@ -120,21 +123,25 @@ TOD-02  FAIL     CTA read "START CIRCUIT 1", expected "WARM UP, THEN CIRCUIT 1" 
 ## 2. Screen map
 
 ```
-Bottom bar (only on the 4 tabs): TODAY · PROGRAM · PROGRESS · LIBRARY
+Bottom bar (only on the 4 tabs): TODAY · PROGRAMS · PROGRESS · LIBRARY
 
-TODAY ──[desc: Settings]──────────▶ Settings ──Program rules────▶ Program rules
+TODAY ──program chips (when >1 active)──▶ that program's day
+TODAY ──[desc: Settings]──────────▶ Settings ──Program rules────▶ Program rules (Home's)
   │    ──[desc: End day early]──▶ dialog        ──Body measurements─▶ Body measurements
   │    ──Warm-up card / CTA──────▶ Warm-up (guided | list)            ├─[desc: Log measurements]▶ log sheet
   │    ──Circuit N card / CTA────▶ Circuit (guided | list)            ├─metric card──▶ Metric history
   │    ──Stretch card / CTA──────▶ Stretch (guided | list)            └─Edit metrics──▶ Edit metrics
   └─(cycle finished) SEE CYCLE SUMMARY ──▶ Cycle summary
-PROGRAM ──day square──▶ expands ──Circuit N──▶ Circuit
-PROGRESS ──Body measurements──▶ Body measurements
+PROGRAMS ──program chip──▶ that program's grid ──day square──▶ expands ──Circuit N──▶ Circuit
+         ──EDIT PROGRAM──▶ Program editor ──Rules──▶ Program rules (that program's)
+         │                                ──circuit row / + Add circuit / Warm-up / Stretch──▶ Circuit editor
+         └─+ NEW PROGRAM──▶ name dialog ──▶ Program editor
+PROGRESS ──program chips──▶ that program's stats;  ──Body measurements──▶ Body measurements
 LIBRARY ──[desc: Add exercise]──▶ New exercise
         ──exercise row──▶ Exercise detail ──[desc: Edit exercise]──▶ Edit exercise
 ```
 
-- The bottom bar is hidden on every screen that isn't a tab. `[desc: Back]` (top-left arrow) or system Back returns.
+- The bottom bar is hidden on every screen that isn't a tab (including both editors). `[desc: Back]` (top-left arrow) or system Back returns.
 - Circuit and routine screens close with `[desc: Close circuit]` (the X, top left) or system Back.
 - Switching tabs keeps each tab's state (for example the Library filter). Re-tapping the current tab does nothing.
 
@@ -142,7 +149,12 @@ LIBRARY ──[desc: Add exercise]──▶ New exercise
 
 ## 3. Seed data
 
-A fresh install has exactly this catalog. Circuits run the program exercises in this order.
+A fresh install has **152 exercises**: the 29 below (Home's), plus a 123-row **library** (slot `LIBRARY`: in no program
+until one adds it) generated from the Gym / CrossFit / Mobility & Flexibility / Core workbook (`LibrarySeed.kt`; per-type
+default targets; Cat-Cow and Child's Pose were merged into Home's rows, gaining `Mat`, `Beginner`, the sheet's cue and
+real video). It also has **three programs**: Home 4-Week (active) and two paused starters (§3.1).
+
+**Home's catalog.** Circuits run the program exercises in this order.
 
 | # | id | Name | Category (section header) | Muscles | Target | Per side | Target label |
 |---|---|---|---|---|---|---|---|
@@ -167,6 +179,17 @@ A fresh install has exactly this catalog. Circuits run the program exercises in 
   Shoulder Cross (Band), Spinal Twist (each 30 sec, per side); Chest Opener (Band) (30 sec); Child's Pose (45 sec).
 - **Form videos:** Push-up, Glute Bridge, Pull-Apart and Band Row link to specific YouTube videos. Every other exercise,
   including new ones with a blank URL, opens a YouTube search for **the exercise name only**, with no suffix.
+
+### 3.1 Starter programs
+
+All three-day, 4-week, one pass through the day's circuit. Both start paused.
+
+| Program | Day 1 | Day 2 | Day 3 | Warm-up / Stretch |
+|---|---|---|---|---|
+| **Gym Strength** (id 2) | `Squat + Bench`: Barbell Back Squat 5, Barbell Bench Press 5, Plank 3 sets; straight sets; rest 120 s (13 steps) | `Deadlift + Pull`: Conventional Deadlift 3, Pull-Up 4, Barbell Row 4, Hanging Knee Raise 3; rest 120 s (14) | `Press + Accessories`: Standing Overhead Press 4, Bulgarian Split Squat 3, Seated Cable Row 3, Dumbbell Biceps Curl 3, Triceps Rope Pushdown 3; rest 90 s (16) | Cat-Cow, World's Greatest Stretch, Shoulder Dislocates, Deep Squat Hold / Couch Stretch, Pigeon Pose, Doorway Pec Stretch, Child's Pose |
+| **CrossFit Conditioning** (id 3) | `EMOM 12`: Kettlebell Swing, Burpee, Wall Ball Shot × 4 sets each (12) | `AMRAP 15`: Thruster, Box Jump, Toes-to-Bar (3) | `Intervals 40/20`: Assault Bike × 4 (target 40 s), Mountain Climber × 4; 8 rounds (8) | Cat-Cow, World's Greatest Stretch, Ankle Dorsiflexion Wall Drill, Deep Squat Hold / Couch Stretch, Pigeon Pose, Lat Stretch on Foam Roller, Child's Pose |
+
+Home's program is unchanged: one circuit of all 13 program exercises, 4/5/6/7 passes a day, 6 days a week.
 
 **Default metrics** (kind → canonical unit, then display decimals):
 
@@ -234,7 +257,7 @@ The app is dark-only and opens on Today. The bottom bar has four tabs. Every oth
 
 | ID | P | Pre | Steps | Expected | Auto |
 |---|---|---|---|---|---|
-| NAV-01 | P0 | R0 | Tap `PROGRAM`, `PROGRESS`, `LIBRARY`, `TODAY` in turn | The headers read `Program` (subtitle `4 weeks · 6 days a week · 132 circuits`), `Progress` (`Current cycle`), `Library` (`29 moves`), then `WEEK 1 · DAY 1` | NavigationE2eTest.nav01 |
+| NAV-01 | P0 | R0 | Tap `PROGRAMS`, `PROGRESS`, `LIBRARY`, `TODAY` in turn | The headers read `Programs` (subtitle `4 weeks · 6 days a week · 132 circuits`), `Progress` (`Current cycle`), `Library` (`152 moves`), then `WEEK 1 · DAY 1` | NavigationE2eTest.nav01 |
 | NAV-02 | P1 | R0 | `[desc: Settings]`, then `[desc: Back]` | Settings has no bottom bar. Back returns to Today with the bar visible | NavigationE2eTest.nav02 |
 | NAV-03 | P1 | R0 | Tap card `Circuit 1`, then press system Back | The circuit opens full-screen (`CIRCUIT 1 · WEEK 1 DAY 1`). Back returns to Today | NavigationE2eTest.nav03 |
 | NAV-04 | P2 | R0 | LIBRARY → chip `Stretch` → TODAY → LIBRARY | Still filtered: `8 moves` | NavigationE2eTest.nav04 |
@@ -242,8 +265,11 @@ The app is dark-only and opens on Today. The bottom bar has four tabs. Every oth
 
 ### TOD: Today screen
 
-Today answers "what do I still owe today?". It shows a header (`WEEK w · DAY d`, `Today`,
-`<n> circuits · <m> exercises each`), a ring (`[desc: <done> of <n> circuits complete]`) with `<x> exercises done` and
+Today answers "what do I still owe today?". With more than one active program a chip row (`Home 4-Week`, `Gym Strength`, …)
+sits on top and each chip shows that program's own day (Today reopens on the chip you last picked); with one, Today looks as it always did. With none active it says
+`No active program` and offers `OPEN PROGRAMS`. It shows a header (`WEEK w · DAY d`, `Today`,
+`<n> circuits · <m> exercises each`, or `1 circuit · <m> exercises` / `<n> circuits · <m> exercises` when circuits differ
+in size; a named circuit's card carries its name underneath), a ring (`[desc: <done> of <n> circuits complete]`) with `<x> exercises done` and
 `<y> left today`, the warm-up card, a `CIRCUITS` list with cards (`Circuit i`, `done/13`), the stretch card, and one
 sticky call-to-action (CTA). The active circuit card has a lime border; finished cards show a filled tick.
 
@@ -365,9 +391,10 @@ still ticks the exercise with no detail.** Logging never blocks finishing. `COMP
 | LOG-08 | P1 | R6 + R7 (lb) | Tick Squat → check the load → reps `5`, load `22` → SAVE → Library → Squat | Field `Load (lb)` pre-filled `22.0` (10 kg). Detail shows `22.0 lb` and `110 lb` | SetLoggingPoundsE2eTest.log08 |
 | LOG-09 | P2 | as LOG-01 | Untick Squat, then tick it again | The old detail is gone. The new sheet pre-fills from earlier logged sets (or defaults) | SetDetailTest.unTickingAndRetickingLosesTheOldDetail |
 
-### PRG: Program tab
+### PRG: Programs tab (grid)
 
-Title `Program`, subtitle `<W> weeks · <D> days a week · <C> circuits`. There's one card per week: `WEEK w` (lime on the
+Title `Programs`, a chip per program (`Gym Strength · paused`, `… · archived`), `EDIT PROGRAM` and `+ NEW PROGRAM`, then
+the selected program's grid (Home on a fresh install), subtitle `<W> weeks · <D> days a week · <C> circuits`. There's one card per week: `WEEK w` (lime on the
 current week), `<n> circuits/day · <D> days`, circuits done out of the week total, and a row of day squares (lime =
 complete, dim green = partial, grey = not started, lime outline = current day). Tapping a square expands it:
 `Day d · <done>/<total> exercises`, or for future days `Day d · preview — finish the current day first`, followed by
@@ -402,8 +429,9 @@ legend `Complete` / `Partial` / `Not yet`), `CIRCUITS PER WEEK` bars (`Week w ·
 
 ### LIB: Library and exercise detail
 
-Title `Library`, `<n> moves` (or `1 move`), `[desc: Add exercise]` (+), a search field (`Search exercises or muscles`;
-it matches the name or muscles, case-insensitive), and chips `All` / `Program` / `Warm-up` / `Stretch` / `Archived`.
+Title `Library`, `<n> moves` (or `1 move`), `[desc: Add exercise]` (+), a search field (`Search name, muscle or equipment`;
+case-insensitive), chips `All` / `Program` / `Warm-up` / `Stretch` / `Archived`, and level chips `Any level` / `Beginner` /
+`Intermediate` / `Advanced`. Sections follow the category: Home's four, then `GYM`, `CROSSFIT`, `MOBILITY`, `CORE`.
 Rows show a colour bar, the name, muscles and a target badge. **Exercise detail:** `[desc: Back]`,
 `[desc: Edit exercise]`, an `ARCHIVED — kept for history, no longer in the rotation` banner when archived, a category
 chip, name, muscles, target plaque (`5` `REPS`, plus `EACH SIDE`), `HOW TO` and the instructions,
@@ -412,13 +440,57 @@ chip, name, muscles, target plaque (`5` `REPS`, plus `EACH SIDE`), `HOW TO` and 
 
 | ID | P | Pre | Steps | Expected | Auto |
 |---|---|---|---|---|---|
-| LIB-01 | P0 | R0 | Open LIBRARY | `29 moves`, sections `BODYWEIGHT · 6`, `RESISTANCE BAND · 7`, `WARM-UP · 8`, `STRETCH · 8`, Squat muscles `Legs · Glutes · Core` | LibraryE2eTest.lib01 |
-| LIB-02 | P0 | R0 | Chips `Program`, `Warm-up`, `Stretch`, `Archived`, `All` | `13 moves`, `8 moves`, `8 moves`, `0 moves` + `Nothing here yet.`, `29 moves` | LibraryE2eTest.lib02 |
+| LIB-01 | P0 | R0 | Open LIBRARY | `152 moves`, sections `BODYWEIGHT · 6`, `RESISTANCE BAND · 7`, `WARM-UP · 8`, `STRETCH · 8`, Squat muscles `Legs · Glutes · Core` | LibraryE2eTest.lib01 |
+| LIB-02 | P0 | R0 | Chips `Program`, `Warm-up`, `Stretch`, `Archived`, `All` | `13 moves`, `8 moves`, `8 moves`, `0 moves` + `Nothing here yet.`, `152 moves` | LibraryE2eTest.lib02 |
 | LIB-03 | P1 | R0 | Search `glute`, then `zzz` | Shows Glute Bridge and Squat (muscles match), then `No exercise matches “zzz”.` | LibraryE2eTest.lib03 |
 | LIB-04 | P0 | R0 | Tap `Squat` → `[desc: Back]` | `BODYWEIGHT`, `Squat`, `REPS`, `HOW TO`, `Watch form video`, `YOUR HISTORY`, `Not done yet this cycle.`. Back returns to the list | LibraryE2eTest.lib04 |
 | LIB-05 | P2 | R0 | Tap `External Rotation` | The plaque shows `EACH SIDE` | LibraryE2eTest.lib05 |
 | LIB-06 | P1 | Circuits 1 and 2 done | Tap `Squat` | `2`, ` completions this cycle`, `LAST 1 TRAINING DAY`, `PERFORMANCE` with the no-sets hint | LibraryHistoryE2eTest.lib06 |
 | LIB-07 | P2 | R0 | Tap `Watch form video` on a device with no browser | Snackbar `No app can open <url>` | — |
+| LIB-08 | P1 | R0 | Search `barbell` → chip `Advanced` → `Any level` | Barbell Back Squat (equipment match) under `GYM · …`; Advanced shows Power Clean, hides Barbell Back Squat; Any level brings it back | LibraryE2eTest.lib07 |
+| LIB-09 | P1 | R0 | Search `deadlift` → tap `Conventional Deadlift` | `Intermediate · Barbell`, `KEY CUE` + `Bar over mid-foot, hips high, push the floor away.`, video credit `… · Jeff Nippard` | LibraryE2eTest.lib08 |
+
+### PGM: programs, circuits, sets and timed formats
+
+**Today** shows a chip per active program when more than one is active; each chip shows that program's own day. **Program
+editor** (`EDIT PROGRAM`): name, `Active` toggle (refused with `Can't turn this program on yet: …` while the plan is
+unfinished), `Rules`, `CIRCUITS` (each opens the circuit editor; `+ Add circuit`), `DAYS` (with more than one circuit: pick
+the circuits each day runs; none = every circuit), `ROUTINES` (Warm-up, Stretch), `Apply changes to current cycle`, `Reset
+this cycle's progress`, `Archive program`. **Circuit editor**: name, exercises (sets, target, load override; `+ ADD EXERCISE`
+searches the Library), `SET ORDER` (Rounds / Straight sets), `FORMAT` (Standard + rest seconds / EMOM / Interval / AMRAP /
+For time). A slot-backed circuit (Home's) offers `CHOOSE EXERCISES INSTEAD`. **In a circuit**: multi-set steps show
+`SET n OF m`; a library cue shows as `KEY CUE`; a Standard circuit with rest shows a `REST` countdown between sets (`SKIP
+REST`); timed formats show a clock card (`START CLOCK`; AMRAP `+1 ROUND` / `SAVE n ROUNDS`; For time `FINISH · m:ss`).
+
+| ID | P | Pre | Steps | Expected | Auto |
+|---|---|---|---|---|---|
+| PGM-01 | P0 | R0 | PROGRAMS → chip `Gym Strength · paused` → tap W1 D1 | `4 weeks · 3 days a week · 12 circuits`; circuit card subtitle `Squat + Bench` | ProgramsE2eTest.pgm01 |
+| PGM-02 | P0 | R0 | Gym → `EDIT PROGRAM` → `Active` → back → TODAY → chip `Gym Strength` → `Circuit 1` | `Shown on Today`; Today chips `Home 4-Week` and `Gym Strength`; `Barbell Back Squat`, `SET 1 OF 5`, `KEY CUE` | ProgramsE2eTest.pgm02 |
+| PGM-03 | P1 | R0 | `+ NEW PROGRAM` → name `Travel` → `SAVE` → `Active` | Editor shows `• Circuit A has no exercises.`; activation refused with `Can't turn this program on yet…` | ProgramsE2eTest.pgm03 |
+| PGM-04 | P1 | R0 | New `Travel` → `Circuit A` → `+ ADD EXERCISE` → search `burpee` → `Burpee` → Sets + → `SAVE` → `Active` | `1 exercise · 2 sets`; then `Shown on Today` | ProgramsE2eTest.pgm04 |
+| PGM-05 | P0 | Gym + CrossFit active | Open Today; tap each chip | Home `4 circuits · 13 exercises each`; Gym `1 circuit · 13 exercises` + `Squat + Bench`; CrossFit `1 circuit · 12 exercises` + `EMOM 12` | ProgramsFlowE2eTest.pgm05 |
+| PGM-06 | P0 | Gym active, guided | Gym → `Circuit 1` → `✓  DONE` → `SAVE` | Header `CIRCUIT 1 · SQUAT + BENCH · W1 D1`, `SET 1 OF 5`, `KEY CUE`; the log sheet opens; then a `120 second hold` rest dial and `SKIP REST`; skipping lands on `SET 2 OF 5`, `2/13` | ProgramsFlowE2eTest.pgm06 |
+| PGM-07 | P1 | CrossFit active | CrossFit → `Circuit 1` | `MINUTE 1 / 12`; `START CLOCK` → `RESET CLOCK` | ProgramsFlowE2eTest.pgm07 |
+| PGM-08 | P1 | CrossFit active | PROGRAMS → CrossFit → W1 D2 → `Circuit 1` → `START CLOCK` → `+1 ROUND` ×2 → `SAVE 2 ROUNDS` | `AMRAP 15 MIN`; `Saved: 2 rounds` | ProgramsFlowE2eTest.pgm08 |
+| PGM-09 | P1 | Gym active | PROGRESS → chip `Gym Strength` → `Home 4-Week` | `Week 1 · 1/day` for Gym, `Week 1 · 4/day` for Home | ProgramsFlowE2eTest.pgm09 |
+| PGM-10 | P0 | Gym active | Gym → editor → `Squat + Bench` → add `Face Pull` → `SAVE` → back → TODAY → Gym | Editor row reads `4 exercises · 14 sets`; the running cycle still shows `1 circuit · 13 exercises` (waits for apply) | ProgramsFlowE2eTest.pgm10, ProgramRepositoryTest.planEditsWaitForApplyLikeRules |
+| PGM-11 | P0 | as PGM-10 | … → `Apply changes to current cycle` → `APPLY` → back → TODAY → Gym | `Applied — the current cycle now runs this plan.`; Today `1 circuit · 14 exercises` | ProgramsFlowE2eTest.pgm11 |
+| PGM-12 | P1 | Gym active | Editor → Days → Day 1 chip `Deadlift + Pull` → apply → TODAY → Gym | `2 circuits · 27 exercises`; cards `Squat + Bench` and `Deadlift + Pull` | ProgramsFlowE2eTest.pgm12 |
+| PGM-13 | P1 | Gym active | Editor → `Archive program` → back | `Restore program`; chip `Gym Strength · archived`; Today no longer lists it. `Restore program` → `Gym Strength · paused` | ProgramsFlowE2eTest.pgm13 |
+| PGM-14 | P1 | Gym active | Editor → `Rules` | `Program rules`, `4 weeks · 3 days · 3 circuits`, `ROUNDS OF EACH DAY'S CIRCUITS` | ProgramsFlowE2eTest.pgm14 |
+| PGM-15 | P1 | R0 | Home → editor → `Circuit` → `CHOOSE EXERCISES INSTEAD` → `SAVE` | Row `Every enabled program exercise in the Library` first; then `13 exercises · 13 sets`; Today unchanged (`4 circuits · 13 exercises each`) | ProgramsFlowE2eTest.pgm15 |
+| PGM-16 | P0 | Gym active, list mode | Gym → `Circuit 1` → tick `Barbell Back Squat set 1 of 5` → `SKIP` → untick | Sections `GYM · 10` and `CORE · 3`; rows `Set 1 of 5` … `Set 5 of 5`; `✓ COMPLETE ALL (12 LEFT)`, back to `(13 LEFT)` | ProgramsListE2eTest.pgm16 |
+| PGM-17 | P0 | Home 1 tick, Gym 2 ticks | Today; tap Gym | Home `1/13`; Gym `2/13` | ProgramsIsolationE2eTest.pgm17, ProgramRepositoryTest.eachSetIsItsOwnTickAndProgramsStayApart |
+| PGM-18 | P0 | as PGM-17 | Gym → editor → `Reset this cycle's progress` → `RESET` → TODAY | `This cycle's progress was reset.`; Gym `0/13`; Home still `1/13` | ProgramsIsolationE2eTest.pgm18 |
+| PGM-19 | P0 | Every Gym day ended early | Today → Gym → `SEE CYCLE SUMMARY` → `START A NEW CYCLE` | `CYCLE COMPLETE`, then a fresh Gym cycle (`Squat + Bench`); Home untouched | ProgramsCompletedE2eTest.pgm20 |
+| PGM-20 | P1 | — | Train in Gym only | Home's streak counts it (the streak is combined across programs) | ProgramRepositoryTest.theStreakCountsTrainingInAnyProgram |
+| PGM-21 | P1 | — | Save an AMRAP score twice for one slot | The second replaces the first | ProgramRepositoryTest.aTimedCircuitResultIsSavedPerSlot |
+| PGM-22 | P1 | Units `LB` | Gym → editor → `Squat + Bench` → `Load (lb)` `220` → `SAVE` → reopen | The field reads `220`; 99.79 kg is stored | ProgramsPoundsE2eTest.pgm22 |
+| PGM-23 | P2 | CrossFit active | Start the AMRAP clock, leave the circuit, come back | The clock kept counting (it didn't reset to 15:00) | ClockMemoryTest (JVM) |
+| PGM-24 | P1 | — | Export after logging a set with load/note, a circuit score and a custom exercise | The JSON has `programs` (draft plan), `customExercises`, each cycle's `plan`, completions with `setNumber`/`reps`/`loadKg`/`rpe`/`note`, and `circuitResults` | ProgramRepositoryTest.theExportCarriesProgramsPlansScoresSetDetailAndCustomExercises |
+| PGM-25 | P1 | R0 | PROGRESS → chip `Gym Strength · paused` | `Week 1 · 1/day` | ProgramsE2eTest.pgm05b |
+| PGM-26 | P1 | Gym active | TODAY → chip `Gym Strength` → relaunch the app | Today reopens on Gym (`Squat + Bench`) | ProgramsFlowE2eTest.pgm21 |
+| PGM-27 | P1 | — | Upgrade a v6 install | Home keeps every cycle and completion (set 1); library lands in the LIBRARY slot; the user's own exercise with a library id is kept; starters inserted paused | MigrationTest.migrate6To7, freshInstallMatchesMigrated |
 
 ### CAT: exercise editor (add, edit, archive, restore)
 
@@ -579,8 +651,10 @@ program length), a ring `[desc: <p> percent of the cycle completed]` (`<p>%` / `
 | INV-01 | P0 | A whole cycle can be completed exercise by exercise, and the counter never skips or stalls | FullCycleTest.theWholeCycleCompletesAndTheCounterNeverSlips |
 | INV-02 | P0 | Each day needs exactly its own number of exercises (52/65/78/91) | FullCycleTest.everyDayNeedsExactlyItsOwnNumberOfExercises |
 | INV-03 | P0 | A finished cycle's stats add up (132 circuits, 1716 exercises) | FullCycleTest.finishedCycleStatsAddUp |
-| INV-04 | P0 | Every database migration v1→v6 keeps the data | MigrationTest |
-| INV-05 | P0 | The seed is exactly 29 exercises, the first cycle opens, and the rules are snapshotted | SeedTest, RulesSnapshotTest |
+| INV-04 | P0 | Every database migration v1→v7 keeps the data | MigrationTest |
+| INV-05 | P0 | Home's seed is exactly 29 exercises (152 with the library), the first cycle opens, and the rules are snapshotted | SeedTest, RulesSnapshotTest |
+| INV-08 | P0 | Several programs never disturb each other's totals; each set ticks once | ProgramRepositoryTest |
+| INV-09 | P1 | A plan's order, sets, overrides and per-day rotation math are exact; the plan text round-trips | PlanTest (JVM) |
 | INV-06 | P1 | Orphaned completions are kept but never counted | OrphanFilterTest |
 | INV-07 | P1 | Rule validation and impact analysis | RuleValidationTest, RuleImpactTest (JVM) |
 
@@ -590,7 +664,7 @@ program length), a ring `[desc: <p> percent of the cycle completed]` (`<p>%` / `
 
 Run on every build (about 15 minutes by hand; the automated equivalent is the full `e2e` package). The IDs:
 
-`NAV-01, TOD-01, TOD-02, TOD-04, TOD-06, TOD-07, GUI-01, GUI-02, GUI-05, GUI-07, TMR-01, LST-01, LST-02, LST-03, LST-06,
+`NAV-01, PGM-02, PGM-05, PGM-06, PGM-16, TOD-01, TOD-02, TOD-04, TOD-06, TOD-07, GUI-01, GUI-02, GUI-05, GUI-07, TMR-01, LST-01, LST-02, LST-03, LST-06,
 LOG-01, LOG-02, LOG-04, PRG-01, PRG-03, PRS-01, LIB-01, LIB-04, CAT-01, CAT-04, CAT-08, RUL-02, RUL-03, RUL-09, SET-02,
 DAT-01, MEA-02, MEA-07, CYC-02, CYC-04`
 
@@ -618,9 +692,9 @@ These depend on hardware, other apps or the system UI, so no automated test cove
 
 | Suite | Location | What it covers |
 |---|---|---|
-| JVM unit (128) | `app/src/test` | `ProgramRulesTest` (shape, settling, **stretch gate**), `StreakTest`, `NextUndoneIndexTest`, `RuleValidationTest`, `RuleImpactTest`, `CatalogValidationTest`, `PerformanceStatsTest`, `BodyStatsTest`, `UnitsTest` (incl. locale), `RecentTalliesTest`, `ProgramTotalsTest`, `TargetForWeekTest`, `HoldTimerTest`, `LibraryFilterTest`, `VideoSearchTest`, `WeeksDoneHeadlineTest`, `WithUnitTest`, `PaletteContrastTest` |
-| Data and repository (instrumented, 102) | `app/src/androidTest/.../data`, `.../repo` | DAO, migrations, seed, full-cycle walk, routines, stats, rules snapshot/apply/orphans/toggles, catalog CRUD and composition, set detail, measurements, stretch hold |
-| **End-to-end UI** (99) | `app/src/androidTest/.../e2e` | Every screen and flow in §6. Test names start with the case ID (`tod06_…` = TOD-06) |
+| JVM unit (151) | `app/src/test` | `PlanTest`, `WorkoutClockTest`, `ClockMemoryTest`, `LibrarySeedTest`, `ProgramRulesTest` (shape, settling, **stretch gate**), `StreakTest`, `NextUndoneIndexTest`, `RuleValidationTest`, `RuleImpactTest`, `CatalogValidationTest`, `PerformanceStatsTest`, `BodyStatsTest`, `UnitsTest` (incl. locale), `RecentTalliesTest`, `ProgramTotalsTest`, `TargetForWeekTest`, `HoldTimerTest`, `LibraryFilterTest`, `VideoSearchTest`, `WeeksDoneHeadlineTest`, `WithUnitTest`, `PaletteContrastTest` |
+| Data and repository (instrumented, 112) | `app/src/androidTest/.../data`, `.../repo` | DAO, migrations, seed, full-cycle walk, routines, stats, rules snapshot/apply/orphans/toggles, catalog CRUD and composition, set detail, measurements, stretch hold, **programs** (`ProgramRepositoryTest`, v6→v7 migration) |
+| **End-to-end UI** (126) | `app/src/androidTest/.../e2e` | Every screen and flow in §6. Test names start with the case ID (`tod06_…` = TOD-06) |
 
 **How the UI suite works** (`E2eTest` base class):
 - Before each test it clears and re-seeds the real database and resets every setting. Then it runs the test's
@@ -638,7 +712,7 @@ features rather than clear bugs. A regression run should confirm they're unchang
 
 | ID | Area | Issue |
 |---|---|---|
-| KI-01 | Export | The export only includes cycles and plain completions. It **omits** logged reps, load, RPE and notes, body measurements, custom metrics, custom exercises and rule snapshots, so it isn't a full backup. There's also no import. |
+| KI-01 | Export | The export covers programs, cycles, completions with set detail, circuit scores and custom exercises, but it still **omits** body measurements, custom metrics and rule snapshots, so it isn't a full backup. There's also no import. |
 | KI-02 | Measurements | The log sheet silently drops invalid values (0, negative, percent over 100, non-numeric) with no message, and an unparseable date silently becomes "now". `SAVE` with no valid values does nothing. |
 | KI-03 | Measurements | Archived metrics can't be restored. The `ARCHIVED` section only lists names. Metric name, kind and order can't be edited after creation. |
 | KI-04 | Catalog | The repository supports reorder, duplicate and restoring the default catalog, but no screen exposes them. |
@@ -648,7 +722,13 @@ features rather than clear bugs. A regression run should confirm they're unchang
 | KI-08 | Library | The `All` and `Program` lists include disabled (not archived) exercises, with no "disabled" marker. |
 | KI-09 | Rules | Today's warm-up and stretch counts ("8 moves") come from the cycle snapshot. Disabling a warm-up move shrinks the routine at once, but the count text only updates after the rules are applied. |
 | KI-10 | Docs | The comment in `SeedData.DEFAULT_METRICS` says "7 enabled"; there are actually 9. |
-
+| KI-11 | — | Retired. A circuit item's load override is entered in the display unit (`Load (lb)`) and stored in kg (PGM-22). |
+| KI-12 | Timers | The rest countdown between sets restarts if you leave the circuit screen (by design: opening the circuit again resumes at the first undone set). The workout clock, by contrast, keeps running while you're away and resumes when you return (PGM-23); it does not survive the app being force-stopped. |
+| KI-13 | — | Retired. The export now carries programs (with draft rules and plan), each cycle's frozen plan, per-set detail (reps, load, band, hold, RPE, note), circuit scores and custom exercises (PGM-24). It still omits body measurements and metrics (see KI-01) and has no import. |
+| KI-14 | — | Retired. Progress lists every non-archived program (`Gym Strength · paused`), so a paused program's stats stay reachable (PGM-25). |
+| KI-15 | — | Retired. Today reopens on the program chip you last picked (PGM-26). |
+| KI-16 | Programs | By design: weight and length units are app-wide, not per program (every program's rules row carries the same pair, and body measurements share them). |
+| KI-17 | Programs | By design: a day runs each circuit once per pass. To repeat a circuit, raise the program's rounds (`Rounds of each day's circuits`) in Rules. |
 ---
 
 ## 11. Regression log: bugs fixed in this pass
@@ -657,6 +737,10 @@ Each fix has an automated regression test. If any of these IDs fails, a fixed bu
 
 | Bug | Symptom before the fix | Guarded by |
 |---|---|---|
+| List mode ignored library categories | A circuit holding Gym, CrossFit, Mobility or Core exercises showed an empty checklist (only the four Home categories were iterated). Found by the programs E2E pass | PGM-16 |
+| Circuit editor navigated from the composition scope | Saving or deleting a circuit crashed under the UI test harness (`setCurrentState must be called on the main thread`); now runs in the ViewModel scope | PGM-04, PGM-10 |
+| Category chips clipped in the exercise editor | With eight categories the single-row chip picker hid options off screen; it now wraps | CAT-07 |
+| Stale seed counts in tests | Seed, Library and export-version assertions assumed 29 exercises / schema 1; updated for the library import | LIB-01, INV-05 |
 | Stretch step unreachable | Finishing the last circuit jumped Today to the next day. `FINISH WITH STRETCHING` never appeared, and a stretch was recorded on the wrong day. Fixed on `main` by requiring the stretch to settle a day. This pass added `SKIP STRETCHING` and the UI and repository coverage | TOD-06…08, TOD-10, TOD-11, CYC-05, `StretchHoldTest`, `FullCycleTest`, `ProgramRulesTest` |
 | Today ignored routine rules | Cards always said "8". Disabled warm-up and stretch still showed, and the CTA still sent you to a disabled warm-up. The finished text always said "24 days" | TOD-09, CYC-01 |
 | Circuits uncompletable after archiving | Archiving a program exercise mid-cycle left 12 tickable exercises against a frozen total of 13 | CAT-08, CAT-09, RTN-07, `CircuitCompositionTest` |

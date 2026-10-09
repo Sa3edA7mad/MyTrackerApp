@@ -2,6 +2,7 @@ package com.example.mytrackerapp.ui.screens.circuit
 
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.AlertDialog
@@ -43,18 +44,20 @@ private data class PendingLog(
 
 @Composable
 fun CircuitRoute(
+    programId: Long,
     week: Int,
     day: Int,
     circuit: Int,
     onExit: () -> Unit,
     viewModel: CircuitViewModel = viewModel(
-        factory = CircuitViewModel.factory(week, day, circuit),
-        key = "circuit/$week/$day/$circuit"
+        factory = CircuitViewModel.factory(programId, week, day, circuit),
+        key = "circuit/$programId/$week/$day/$circuit"
     )
 ) {
     val state by viewModel.state.collectAsState()
     val settings by viewModel.settings.collectAsState()
     val unitPrefs by viewModel.unitPrefs.collectAsState()
+    val result by viewModel.result.collectAsState()
 
     var showSummary by remember { mutableStateOf(false) }
     var restartKey by remember { mutableIntStateOf(0) }
@@ -80,8 +83,19 @@ fun CircuitRoute(
             )
         }
 
-        is UiState.Ready -> {
+        is UiState.Ready -> Column(Modifier.fillMaxSize()) {
             val view = s.data
+            val name = view.plan?.name?.takeIf { it.isNotBlank() && it != "Circuit" }
+            val overline = "CIRCUIT $circuit · " + (name?.let { "${it.uppercase()} · W$week D$day" } ?: "WEEK $week DAY $day")
+            view.plan?.let { plan ->
+                WorkoutClock(
+                    plan,
+                    slotKey = "$programId/$week/$day/$circuit",
+                    savedResult = result,
+                    onSaveResult = viewModel::saveResult
+                )
+            }
+            Box(Modifier.weight(1f)) {
 
             fun requestDone(exerciseId: String, onLogged: () -> Unit) {
                 val exercise = view.exercises.firstOrNull { it.id == exerciseId }
@@ -102,7 +116,7 @@ fun CircuitRoute(
                     // run may too.
                     view = view.copy(editable = true),
                     settings = settings,
-                    overline = "CIRCUIT $circuit · WEEK $week DAY $day",
+                    overline = overline,
                     onDone = { id, onLogged -> requestDone(id, onLogged) },
                     onExit = { focusId = null },
                     onFinished = { focusId = null },
@@ -114,7 +128,7 @@ fun CircuitRoute(
                 GuidedPager(
                     view = view,
                     settings = settings,
-                    overline = "CIRCUIT $circuit · WEEK $week DAY $day",
+                    overline = overline,
                     onDone = { id, onLogged -> requestDone(id, onLogged) },
                     onExit = onExit,
                     onFinished = { showSummary = true },
@@ -124,7 +138,7 @@ fun CircuitRoute(
             } else {
                 ChecklistMode(
                     view = view,
-                    title = "Circuit $circuit",
+                    title = "Circuit $circuit" + (name?.let { " · $it" } ?: ""),
                     hapticsEnabled = settings.haptics,
                     onToggle = { id, done ->
                         if (done) requestDone(id) {} else viewModel.setDone(id, false)
@@ -196,6 +210,7 @@ fun CircuitRoute(
                         }
                     )
                 }
+            }
             }
         }
     }

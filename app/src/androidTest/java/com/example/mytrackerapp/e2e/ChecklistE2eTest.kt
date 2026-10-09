@@ -143,7 +143,7 @@ class ChecklistFutureDayE2eTest : E2eTest() {
 
     @Test
     fun lst09_aLockedFutureDayCanBeTickedFromTheList() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         tapDesc("Week 1 day 3, not started")
         tapText("Circuit 1")
         see("Future day — ticks here count for week 1 day 3.")

@@ -14,7 +14,7 @@ class ProgramE2eTest : E2eTest() {
 
     @Test
     fun prg01_showsEveryWeekWithItsShape() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         see("4 weeks · 6 days a week · 132 circuits")
         see("WEEK 1")
         see("4 circuits/day · 6 days")
@@ -26,7 +26,7 @@ class ProgramE2eTest : E2eTest() {
 
     @Test
     fun prg02_daySquaresDescribeTheirState() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         seeDesc("Week 1 day 1, 13 of 52")
         seeDesc("Week 1 day 2, not started")
         seeDesc("Week 4 day 6, not started")
@@ -34,7 +34,7 @@ class ProgramE2eTest : E2eTest() {
 
     @Test
     fun prg03_tappingTheCurrentDayExpandsItsCircuits() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         tapDesc("Week 1 day 1, 13 of 52")
         see("Day 1 · 13/52 exercises")
         see("13/13")
@@ -44,7 +44,7 @@ class ProgramE2eTest : E2eTest() {
 
     @Test
     fun prg04_tappingTheSameDayAgainCollapsesIt() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         tapDesc("Week 1 day 1, 13 of 52")
         see("Day 1 · 13/52 exercises")
         tapDesc("Week 1 day 1, 13 of 52")
@@ -53,7 +53,7 @@ class ProgramE2eTest : E2eTest() {
 
     @Test
     fun prg05_aFutureDayIsLabelledAPreview() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         tapDesc("Week 2 day 1, not started")
         see("Day 1 · preview — finish the current day first")
     }
@@ -62,7 +62,7 @@ class ProgramE2eTest : E2eTest() {
     fun prg06_anEndedDayReadsEndedEarly() {
         tapDesc("End day early")
         tapText("END DAY")
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         seeDesc("Week 1 day 1, ended early, 13 of 52")
     }
 }
@@ -79,7 +79,7 @@ class ProgramCustomRulesE2eTest : E2eTest() {
 
     @Test
     fun prg07_headerAndWeeksFollowTheRules() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         see("2 weeks · 3 days a week · 15 circuits")
         see("2 circuits/day · 3 days")
         see("3 circuits/day · 3 days")
@@ -88,7 +88,7 @@ class ProgramCustomRulesE2eTest : E2eTest() {
 
     @Test
     fun prg08_withLockingOffAFutureDayIsNotAPreview() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         tapDesc("Week 2 day 3, not started")
         see("Day 3 · 0/39 exercises")
         dontSee("preview", substring = true)

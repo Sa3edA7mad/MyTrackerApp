@@ -50,7 +50,7 @@ data class TopDestination(
 
 val topDestinations: List<TopDestination> = listOf(
     TopDestination(Routes.TODAY, "TODAY", AppIcons.today),
-    TopDestination(Routes.PROGRAM, "PROGRAM", AppIcons.program),
+    TopDestination(Routes.PROGRAM, "PROGRAMS", AppIcons.program),
     TopDestination(Routes.PROGRESS, "PROGRESS", AppIcons.progress),
     TopDestination(Routes.LIBRARY, "LIBRARY", AppIcons.library)
 )

@@ -19,7 +19,7 @@ class LibraryE2eTest : E2eTest() {
     @Test
     fun lib01_listsTheWholeCatalogByCategory() {
         openTab("LIBRARY")
-        see("29 moves")
+        see("152 moves")
         see("BODYWEIGHT · 6")
         see("Squat")
         see("Legs · Glutes · Core")
@@ -43,7 +43,7 @@ class LibraryE2eTest : E2eTest() {
         see("0 moves")
         see("Nothing here yet.")
         tapText("All")
-        see("29 moves")
+        see("152 moves")
     }
 
     @Test
@@ -68,7 +68,7 @@ class LibraryE2eTest : E2eTest() {
         see("YOUR HISTORY")
         see("Not done yet this cycle.")
         tapDesc("Back")
-        see("29 moves")
+        see("152 moves")
     }
 
     @Test
@@ -76,6 +76,66 @@ class LibraryE2eTest : E2eTest() {
         openTab("LIBRARY")
         tapText("External Rotation")
         see("EACH SIDE")
+    }
+
+    @Test
+    fun lib07_searchMatchesEquipmentAndLevelChipsNarrowIt() {
+        openTab("LIBRARY")
+        search("barbell")
+        see("Barbell Back Squat")
+        see("GYM · ", substring = true)
+        tapText("Advanced")
+        see("Power Clean")
+        dontSee("Barbell Back Squat")
+        tapText("Any level")
+        see("Barbell Back Squat")
+    }
+
+    @Test
+    fun lib09_theImportedSheetsAreTheirOwnSections() {
+        openTab("LIBRARY")
+        see("GYM · 32")
+        see("CROSSFIT · 32")
+        see("MOBILITY · 29")
+        see("CORE · 30")
+        // Cat-Cow and Child's Pose were merged into Home's rows, not duplicated.
+        see("WARM-UP · 8")
+        see("STRETCH · 8")
+    }
+
+    @Test
+    fun lib10_aMergedHomeExerciseGainsTheSheetsMetadata() {
+        openTab("LIBRARY")
+        tapText("Cat-Cow")
+        see("Beginner · Mat")
+        see("KEY CUE")
+        see("Move with the breath, segment by segment through the spine.")
+        see("Cat-Cow Stretch with Sarah Cil · JAG Physical Therapy")
+    }
+
+    @Test
+    fun lib11_equipmentLevelAndCueAreEditable() {
+        openTab("LIBRARY")
+        search("plank")
+        tapText("Plank")
+        tapDesc("Edit exercise")
+        typeInto("Equipment", "Floor mat")
+        typeInto("Key technique cue", "Squeeze everything.")
+        tapText("ADVANCED")
+        tapButton("Save")
+        see("Advanced · Floor mat")
+        see("Squeeze everything.")
+    }
+
+    @Test
+    fun lib08_libraryExercisesShowCueLevelAndVideoCredit() {
+        openTab("LIBRARY")
+        search("deadlift")
+        tapText("Conventional Deadlift")
+        see("Intermediate · Barbell")
+        see("KEY CUE")
+        see("Bar over mid-foot, hips high, push the floor away.")
+        see("Build A Bigger Deadlift With Perfect Technique (Conventional Form) · Jeff Nippard")
     }
 }
 
@@ -113,7 +173,7 @@ class CatalogEditorE2eTest : E2eTest() {
         typeInto("Name", "Pistol Squat")
         dontSee("Name can't be empty.")
         tapButton("Save")
-        see("30 moves")
+        see("153 moves")
         tapText("Program")
         see("14 moves")
         see("Pistol Squat")
@@ -140,7 +200,7 @@ class CatalogEditorE2eTest : E2eTest() {
         see("Air Squat")
         tapDesc("Back")
         see("Air Squat")
-        see("29 moves")
+        see("152 moves")
     }
 
     @Test
@@ -155,7 +215,7 @@ class CatalogEditorE2eTest : E2eTest() {
         tapText("ARCHIVE")
         see("ARCHIVED — kept for history, no longer in the rotation")
         tapDesc("Back")
-        see("28 moves")
+        see("151 moves")
         tapText("Archived")
         see("1 move")
         see("Squat")
@@ -173,7 +233,7 @@ class CatalogEditorE2eTest : E2eTest() {
         tapText("Restore")
         dontSee("ARCHIVED — kept for history, no longer in the rotation")
         tapDesc("Back")
-        see("29 moves")
+        see("152 moves")
     }
 
     @Test

@@ -151,7 +151,9 @@ class CycleRestartTest {
         repo.setExerciseDone(1, 1, 1, "crunch", true)
 
         val json = JSONObject(repo.exportJson())
-        assertEquals(1, json.getInt("schemaVersion"))
+        // v2 adds each cycle's programId and each completion's setNumber.
+        assertEquals(2, json.getInt("schemaVersion"))
+        assertEquals(1, json.getJSONArray("cycles").getJSONObject(0).getLong("programId"))
 
         val cycles = json.getJSONArray("cycles")
         assertEquals("export must cover past cycles too", 2, cycles.length())

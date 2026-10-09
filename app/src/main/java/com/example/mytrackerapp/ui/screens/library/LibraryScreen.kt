@@ -57,6 +57,7 @@ import com.example.mytrackerapp.ui.components.AppIcons
 import com.example.mytrackerapp.ui.components.LoadingState
 import com.example.mytrackerapp.ui.components.SectionHeader
 import com.example.mytrackerapp.ui.components.TargetBadge
+import com.example.mytrackerapp.ui.components.ChipRow
 import com.example.mytrackerapp.ui.components.accent
 import com.example.mytrackerapp.ui.components.label
 import com.example.mytrackerapp.ui.theme.Accent
@@ -79,14 +80,23 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.stateIn
 import com.example.mytrackerapp.ui.theme.glassBackdrop
 
-/** Case-insensitive match on name or muscles. Pure so it can be unit-tested. */
+/** Case-insensitive match on name, muscles or equipment. Pure so it can be unit-tested. */
 fun filterCatalog(catalog: List<Exercise>, query: String): List<Exercise> {
     val q = query.trim()
     if (q.isEmpty()) return catalog
     return catalog.filter {
-        it.name.contains(q, ignoreCase = true) || it.muscles.contains(q, ignoreCase = true)
+        it.name.contains(q, ignoreCase = true) ||
+            it.muscles.contains(q, ignoreCase = true) ||
+            it.equipment.contains(q, ignoreCase = true)
     }
 }
+
+/** Library levels, as stored on [Exercise.level]. */
+val LEVELS = listOf("BEGINNER", "INTERMEDIATE", "ADVANCED")
+
+/** Null [level] matches everything. */
+fun filterLevel(catalog: List<Exercise>, level: String?): List<Exercise> =
+    if (level == null) catalog else catalog.filter { it.level == level }
 
 /** All / Program / Warm-up / Stretch / Archived, shown as a chip row above the catalog. */
 enum class LibraryFilter { ALL, PROGRAM, WARMUP, STRETCH, ARCHIVED }
@@ -107,10 +117,17 @@ class LibraryViewModel(private val catalog: CatalogRepository) : ViewModel() {
     private val _filter = MutableStateFlow(LibraryFilter.ALL)
     val filter: StateFlow<LibraryFilter> = _filter.asStateFlow()
 
+    private val _level = MutableStateFlow<String?>(null)
+    val level: StateFlow<String?> = _level.asStateFlow()
+
     val results: StateFlow<List<Exercise>?> =
-        combine(catalog.observeAll(includeArchived = true), _query, _filter) { all, q, f ->
-            if (all.isEmpty()) null else filterCatalog(applyFilter(all, f), q)
+        combine(catalog.observeAll(includeArchived = true), _query, _filter, _level) { all, q, f, l ->
+            if (all.isEmpty()) null else filterCatalog(filterLevel(applyFilter(all, f), l), q)
         }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5_000), null)
+
+    fun onLevelChange(value: String?) {
+        _level.value = value
+    }
 
     fun onQueryChange(value: String) {
         _query.value = value
@@ -140,6 +157,7 @@ fun LibraryRoute(
     val results by viewModel.results.collectAsState()
     val query by viewModel.query.collectAsState()
     val filter by viewModel.filter.collectAsState()
+    val level by viewModel.level.collectAsState()
 
     val list = results
     if (list == null) {
@@ -152,7 +170,9 @@ fun LibraryRoute(
             onQueryChange = viewModel::onQueryChange,
             onFilterChange = viewModel::onFilterChange,
             onOpenExercise = onOpenExercise,
-            onAddExercise = onAddExercise
+            onAddExercise = onAddExercise,
+            level = level,
+            onLevelChange = viewModel::onLevelChange
         )
     }
 }
@@ -165,10 +185,12 @@ fun LibraryScreen(
     onQueryChange: (String) -> Unit,
     onFilterChange: (LibraryFilter) -> Unit,
     onOpenExercise: (String) -> Unit,
-    onAddExercise: () -> Unit
+    onAddExercise: () -> Unit,
+    level: String? = null,
+    onLevelChange: (String?) -> Unit = {}
 ) {
     val grouped = exercises.groupBy { it.category }
-    val order = listOf(Category.BODYWEIGHT, Category.BAND, Category.WARMUP, Category.STRETCH)
+    val order = Category.entries
 
     Column(Modifier.fillMaxSize().glassBackdrop()) {
         Column(Modifier.padding(horizontal = Spacing.lg)) {
@@ -204,7 +226,7 @@ fun LibraryScreen(
                 singleLine = true,
                 placeholder = {
                     Text(
-                        "Search exercises or muscles",
+                        "Search name, muscle or equipment",
                         style = MaterialTheme.typography.bodyMedium,
                         color = TextTertiary
                     )
@@ -224,6 +246,13 @@ fun LibraryScreen(
             )
             Spacer(Modifier.height(Spacing.sm))
             FilterChipRow(filter, onFilterChange)
+            Spacer(Modifier.height(Spacing.sm))
+            ChipRow(
+                options = listOf<String?>(null) + LEVELS,
+                selected = level,
+                label = { it?.lowercase()?.replaceFirstChar(Char::uppercase) ?: "Any level" },
+                onSelect = onLevelChange
+            )
             Spacer(Modifier.height(Spacing.sm))
         }
 

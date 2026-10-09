@@ -61,7 +61,8 @@ class VideoSearchTest {
     @Test
     fun `every seeded search link matches the generated one`() {
         val searches = SeedData.ALL_EXERCISES.filter { it.videoUrl.contains("search_query=") }
-        assertEquals(25, searches.size)
+        // 29 minus the 4 original real videos, minus Cat-Cow and Child's Pose (library videos merged in).
+        assertEquals(23, searches.size)
         searches.forEach { assertEquals(it.name, youtubeSearchUrl(it.name), it.videoUrl) }
         assertTrue(SeedData.ALL_EXERCISES.none { it.videoUrl.contains("proper") })
     }

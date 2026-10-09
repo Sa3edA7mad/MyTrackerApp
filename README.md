@@ -1,37 +1,55 @@
 # MyTrackerApp
 
-A native Android tracker for a workout program, built with Jetpack Compose, Room, and
-Navigation Compose. Offline-only — no accounts, no network calls. The program's shape
-(weeks, days, circuit sizes, warm-up/stretch, counting and locking rules) and its exercise
-catalog are both editable in-app rather than hard-coded, and tracking goes beyond a
-checkbox: reps, load, and body measurements are all first-class.
+A native Android tracker for workout programs, built with Jetpack Compose, Room, and
+Navigation Compose. Offline-only — no accounts, no network calls. You can run several
+programs side by side (a home bodyweight program, a gym lifting split, CrossFit-style
+conditioning…), each with its own cycle, named circuits, sets, warm-up, stretch and rules.
+The programs, their shape and the exercise library are all editable in-app rather than
+hard-coded, and tracking goes beyond a checkbox: sets, reps, load, timed formats and body
+measurements are all first-class.
 
 ## Features
 
-- **Today** — the current day's circuits, warm-up, and stretch, with live progress.
+- **Today** — the current day's circuits, warm-up, and stretch, with live progress. With
+  more than one active program, a chip row picks which program's day you're looking at.
+- **Programs** — Home 4-Week (your original program), plus Gym Strength and CrossFit
+  Conditioning starters and any you create. Any number can be active; each runs its own
+  cycle with its own week/day counter. Pause, archive and restore keep history intact.
+- **Program editor** — name, active toggle, rules, named circuits (exercises with sets,
+  target and load overrides; straight-sets or rounds order; Standard / EMOM / Interval /
+  AMRAP / For-time format), which circuits each day of the week runs, and per-program
+  warm-up and stretch lists picked from the library. Edits apply to the next cycle unless
+  you apply them to the current one.
 - **Guided circuit mode** — one exercise at a time, with an auto-advancing hold timer
   (audio cues at 3-2-1-0, since the phone is usually out of easy reach mid-hold) for
   timed exercises, and a two-stage side-1/side-2 flow for per-side exercises. An exercise
   flagged to track reps and/or load prompts for them when ticked, pre-filled from its last
   logged set (or its weekly target/default); skipping the prompt never blocks finishing a
-  circuit, and exercises without logging enabled stay a plain single-tap checkbox.
+  circuit, and exercises without logging enabled stay a plain single-tap checkbox. Multi-set
+  exercises run one set per step ("Set 2 of 5") with an optional rest countdown between
+  sets; EMOM, interval, AMRAP and for-time circuits get a clock card (AMRAP counts rounds,
+  for-time records your finish time, and the score is saved per circuit slot). A library
+  technique cue shows as a highlighted tip.
 - **Checklist mode** — the same circuit as a flat, tickable list. Switching modes
   mid-circuit preserves progress and resumes at the right exercise either way.
-- **Program** — all weeks at a glance; past days are reviewable, future days are a locked
-  preview until the current day is finished, unless that lock is turned off in Program
-  rules.
-- **Program rules editor** (Settings → Program rules) — weeks, days per week, circuits per
-  week, warm-up/stretch toggles, whether they count toward totals, whether future days are
+- **Program grid** (Programs tab) — the selected program's weeks at a glance; past days are
+  reviewable, future days are a locked preview until the current day is finished, unless
+  that lock is turned off in that program's rules.
+- **Program rules editor** (a program's editor → Rules; Settings → Program rules opens
+  Home's) — weeks, days per week, rounds per day, warm-up/stretch toggles, whether they count toward totals, whether future days are
   locked, the day-rollover hour, and display units. Edits save to a *draft* and only affect
   a running cycle once explicitly applied, with a preview of the impact (days reopened,
   completions orphaned) shown first.
-- **Library & exercise catalog editor** — every exercise, searchable by name or muscle
-  group, each with instructions, target, and a form-video link. Add, edit, reorder, archive
+- **Library & exercise catalog editor** — 152 exercises (Home's 29 plus the Gym, CrossFit,
+  Mobility & Flexibility and Core sheets), searchable by name, muscle group or equipment and
+  filterable by level, each with equipment, level, technique cue, target and a form-video
+  link with its title and channel. Add, edit, reorder, archive
   and restore exercises; archiving keeps an exercise's history readable without it staying
   in the rotation. Program-slot exercises drive the *draft* rules' circuit size live; a
   running cycle keeps the composition it was snapshotted with until rules are applied.
 - **Progress** — streak, cycle completion %, a heat map of the whole cycle, and a
-  "most done" ranking.
+  "most done" ranking for the selected program. The streak counts a day trained in any
+  program.
 - **Body measurements** (Progress / Settings → Body measurements) — log a whole measuring
   session at once against a catalog of 17 default metrics (or your own custom ones), see
   per-metric history with a trend sparkline, and derived stats (BMI, waist-to-hip,
@@ -92,8 +110,10 @@ those tests are in [`docs/FEATURES.md`](docs/FEATURES.md).
 
 ## Program rules
 
-Every rule of the program — weeks, days per week, circuit sizes, warm-up/stretch, counting and
+Every rule of a program — weeks, days per week, circuit sizes, warm-up/stretch, counting and
 locking — lives in `domain/ProgramRules.kt` as one immutable value, not as scattered constants.
+What a program *contains* (its named circuits, day rotation, warm-up and stretch) is its plan
+in `domain/Plan.kt`; see "Programs" in `docs/ARCHITECTURE.md`.
 Two invariants make editing safe:
 
 - **Rules are snapshotted per cycle** (`cycle_rules` table). Editing the rules writes a new
@@ -121,13 +141,14 @@ See the numbered `INVARIANT n` comments throughout `data/db/`, `data/entity/Enti
 ```
 app/src/main/java/com/example/mytrackerapp/
 ├── data/
-│   ├── db/        # Room database, DAOs, versioned migrations (currently v1-v5)
+│   ├── db/        # Room database, DAOs, versioned migrations (currently v1-v7)
 │   ├── entity/     # Table entities, incl. program_rules/cycle_rules and metrics/measurements
 │   ├── prefs/      # DataStore-backed settings
-│   └── seed/       # Default exercise catalog + metric catalog seed rows
+│   └── seed/       # Home catalog, 123-row library import, starter programs, metric catalog
 ├── di/            # Simple manual dependency container (AppContainer)
 ├── domain/        # Program/model logic independent of Android framework
-│   ├── ProgramRules.kt        # the program's rules as one immutable value
+│   ├── ProgramRules.kt        # a program's rules as one immutable value (per-day rotations)
+│   ├── Plan.kt                # circuits, sets, set order, timed formats; plan text codec
 │   ├── RuleValidation.kt      # rule validation + apply-impact analysis
 │   ├── CatalogValidation.kt   # exercise-draft validation
 │   ├── PerformanceStats.kt    # best load/reps, volume, trend from set logs
@@ -136,13 +157,15 @@ app/src/main/java/com/example/mytrackerapp/
 │   └── model/                  # Exercise/CircuitView/DayState/... UI-facing models
 ├── repo/          # Repository layer bridging data and UI
 │   ├── TrackerRepository.kt     # program/circuit/completion reads and writes
-│   ├── RulesRepository.kt       # draft + per-cycle rule snapshots, apply/preview
+│   ├── RulesRepository.kt       # one program's draft rules + plan, per-cycle snapshots, apply/preview
+│   ├── ProgramRepository.kt     # create/rename/activate/archive programs
 │   ├── CatalogRepository.kt     # exercise CRUD, archive/restore, reorder
 │   └── MeasurementRepository.kt # metric catalog + measurement CRUD
 └── ui/
     ├── screens/
     │   ├── today/, program/, progress/, library/   # the four tabbed screens
-    │   ├── circuit/, routine/                        # guided/checklist training flow
+    │   ├── programedit/                                # program + circuit editors
+    │   ├── circuit/, routine/                        # guided/checklist flow, rest and workout clock
     │   ├── rules/                                     # program rules editor
     │   ├── catalog/                                   # exercise add/edit/archive
     │   ├── exercise/                                   # exercise detail + performance
@@ -152,6 +175,6 @@ app/src/main/java/com/example/mytrackerapp/
     └── theme/         # Colours, spacing, typography
 ```
 
-For the data model, the six correctness invariants the app relies on, the design
+For the data model, the nine correctness invariants the app relies on, the design
 system, and a record of bugs found during end-to-end testing, see
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md).

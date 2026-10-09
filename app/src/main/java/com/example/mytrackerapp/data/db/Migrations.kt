@@ -2,7 +2,11 @@ package com.example.mytrackerapp.data.db
 
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import com.example.mytrackerapp.data.entity.ExerciseEntity
+import com.example.mytrackerapp.data.seed.LibrarySeed
 import com.example.mytrackerapp.data.seed.SeedData
+import com.example.mytrackerapp.data.seed.StarterPrograms
+import com.example.mytrackerapp.domain.PlanCodec
 import com.example.mytrackerapp.domain.ProgramRules
 
 /**
@@ -148,6 +152,116 @@ val MIGRATION_5_6 = object : Migration(5, 6) {
             """UPDATE exercises
                SET videoUrl = REPLACE(videoUrl, '%20exercise%20proper%20form', '')
                WHERE instr(videoUrl, 'youtube.com/results?search_query=') > 0"""
+        )
+    }
+}
+
+/**
+ * v6 -> v7: programs.
+ *
+ * - `programs` table; the existing install becomes program 1, "Home 4-Week". Its rules row
+ *   (`program_rules.id = 1`) and every existing cycle (`cycles.programId` defaults to 1) are
+ *   already Home's, so no history moves. Home's blank `planText` means "the catalog-slot plan",
+ *   exactly what it ran before; old `cycle_rules` rows keep reading `programExerciseIdsCsv`.
+ * - `completions.setNumber` (every existing row is set 1) joins the unique index, so a
+ *   multi-set exercise can be ticked once per set.
+ * - `circuit_results` for AMRAP / for-time scores.
+ * - The library import: 123 exercises in the LIBRARY slot, in no circuit, plus sheet
+ *   metadata merged into Cat-Cow and Child's Pose. INSERT OR IGNORE leaves a user's own
+ *   exercise alone if it already took one of the ids.
+ * - Two inactive starter programs (Gym Strength, CrossFit Conditioning).
+ *
+ * `CREATE` statements copied verbatim from the Room-generated schemas/7.json.
+ */
+val MIGRATION_6_7 = object : Migration(6, 7) {
+    override fun migrate(db: SupportSQLiteDatabase) {
+        listOf("equipment", "level", "cue", "videoTitle", "videoChannel").forEach {
+            db.execSQL("ALTER TABLE exercises ADD COLUMN `$it` TEXT NOT NULL DEFAULT ''")
+        }
+        db.execSQL("ALTER TABLE completions ADD COLUMN `setNumber` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("DROP INDEX IF EXISTS `index_completions_cycleId_week_day_circuit_exerciseId`")
+        db.execSQL(
+            "CREATE UNIQUE INDEX IF NOT EXISTS `index_completions_cycleId_week_day_circuit_exerciseId_setNumber` ON `completions` (`cycleId`, `week`, `day`, `circuit`, `exerciseId`, `setNumber`)"
+        )
+        db.execSQL("ALTER TABLE cycles ADD COLUMN `programId` INTEGER NOT NULL DEFAULT 1")
+        db.execSQL("ALTER TABLE program_rules ADD COLUMN `planText` TEXT NOT NULL DEFAULT ''")
+        db.execSQL("ALTER TABLE cycle_rules ADD COLUMN `planText` TEXT NOT NULL DEFAULT ''")
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `programs` (`id` INTEGER PRIMARY KEY AUTOINCREMENT NOT NULL, `name` TEXT NOT NULL, `active` INTEGER NOT NULL, `archivedAt` INTEGER, `createdAt` INTEGER NOT NULL)"
+        )
+        db.execSQL(
+            "CREATE TABLE IF NOT EXISTS `circuit_results` (`cycleId` INTEGER NOT NULL, `week` INTEGER NOT NULL, `day` INTEGER NOT NULL, `circuit` INTEGER NOT NULL, `value` INTEGER NOT NULL, `recordedAt` INTEGER NOT NULL, PRIMARY KEY(`cycleId`, `week`, `day`, `circuit`), FOREIGN KEY(`cycleId`) REFERENCES `cycles`(`id`) ON UPDATE NO ACTION ON DELETE CASCADE )"
+        )
+
+        // Merge the workbook's metadata into the two exercises it shares with Home. The real
+        // video only replaces a link the user never changed (the seeded search, or blank).
+        SeedData.ALL_EXERCISES.filter { it.equipment.isNotEmpty() }.forEach { e ->
+            db.execSQL(
+                """UPDATE exercises SET equipment = ?, level = ?, cue = ?, videoTitle = ?,
+                   videoChannel = ? WHERE id = ?""",
+                arrayOf(e.equipment, e.level, e.cue, e.videoTitle, e.videoChannel, e.id)
+            )
+            db.execSQL(
+                """UPDATE exercises SET videoUrl = ?
+                   WHERE id = ? AND (videoUrl = '' OR instr(videoUrl, 'youtube.com/results?') > 0)""",
+                arrayOf(e.videoUrl, e.id)
+            )
+        }
+        LibrarySeed.EXERCISES.forEach { insertExercise(db, it, orIgnore = true) }
+
+        val units = db.query("SELECT weightUnit, lengthUnit FROM program_rules WHERE id = 1").use { c ->
+            if (c.moveToFirst()) c.getString(0) to c.getString(1) else "KG" to "CM"
+        }
+        insertPrograms(db, units.first, units.second, System.currentTimeMillis())
+    }
+}
+
+/** One catalog row, every column. Shared by [SeedCallback] and [MIGRATION_6_7] (INVARIANT 9). */
+internal fun insertExercise(db: SupportSQLiteDatabase, e: ExerciseEntity, orIgnore: Boolean) {
+    db.execSQL(
+        """INSERT ${if (orIgnore) "OR IGNORE " else ""}INTO exercises
+           (id, name, category, muscles, instructions, targetType, targetValue,
+            perSide, targetLabel, videoUrl, sortOrder, slot, enabled, archivedAt,
+            isCustom, tracksReps, tracksLoad, defaultLoadKg, defaultBandLevel,
+            progressionStep, equipment, level, cue, videoTitle, videoChannel)
+           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?)""",
+        arrayOf<Any>(
+            e.id, e.name, e.category, e.muscles, e.instructions, e.targetType, e.targetValue,
+            if (e.perSide) 1 else 0, e.targetLabel, e.videoUrl, e.sortOrder, e.slot,
+            if (e.enabled) 1 else 0, if (e.isCustom) 1 else 0, if (e.tracksReps) 1 else 0,
+            if (e.tracksLoad) 1 else 0, e.progressionStep, e.equipment, e.level, e.cue,
+            e.videoTitle, e.videoChannel
+        )
+    )
+}
+
+/**
+ * The Home program row plus the starter programs and their rules rows. Program 1's rules
+ * row already exists (seeded or migrated); the starters copy its display units.
+ */
+internal fun insertPrograms(db: SupportSQLiteDatabase, weightUnit: String, lengthUnit: String, now: Long) {
+    db.execSQL(
+        "INSERT OR IGNORE INTO programs (id, name, active, archivedAt, createdAt) VALUES (?, ?, 1, NULL, ?)",
+        arrayOf<Any>(StarterPrograms.HOME_ID, StarterPrograms.HOME_NAME, now)
+    )
+    StarterPrograms.ALL.forEach { p ->
+        db.execSQL(
+            "INSERT OR IGNORE INTO programs (id, name, active, archivedAt, createdAt) VALUES (?, ?, 0, NULL, ?)",
+            arrayOf<Any>(p.id, p.name, now)
+        )
+        val r = p.rules
+        db.execSQL(
+            """INSERT OR IGNORE INTO program_rules
+               (id, weeks, daysPerWeek, circuitsPerWeekCsv, dayRolloverHour, warmUpEnabled,
+                stretchEnabled, countRoutinesInTotals, lockFutureDays, weightUnit, lengthUnit,
+                updatedAt, planText)
+               VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)""",
+            arrayOf<Any>(
+                p.id, r.weeks, r.daysPerWeek, ProgramRules.circuitsCsv(r.circuitsPerWeek),
+                r.dayRolloverHour, if (r.warmUpEnabled) 1 else 0, if (r.stretchEnabled) 1 else 0,
+                if (r.countRoutinesInTotals) 1 else 0, if (r.lockFutureDays) 1 else 0,
+                weightUnit, lengthUnit, now, PlanCodec.encode(p.plan)
+            )
         )
     }
 }

@@ -200,7 +200,7 @@ class LockedDayGuidedE2eTest : E2eTest() {
 
     @Test
     fun gui09_futureDayIsAReadOnlyPreview() {
-        openTab("PROGRAM")
+        openTab("PROGRAMS")
         tapDesc("Week 1 day 2, not started")
         see("Day 2 · preview — finish the current day first")
         tapText("Circuit 1")

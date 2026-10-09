@@ -1,18 +1,25 @@
 package com.example.mytrackerapp.repo
 
 import com.example.mytrackerapp.data.db.CircuitCount
+import com.example.mytrackerapp.data.db.CircuitResultDao
 import com.example.mytrackerapp.data.db.CompletionDao
 import com.example.mytrackerapp.data.db.CycleDao
 import com.example.mytrackerapp.data.db.DayDao
 import com.example.mytrackerapp.data.db.ExerciseDao
+import com.example.mytrackerapp.data.entity.CircuitResultEntity
 import com.example.mytrackerapp.data.entity.CompletionEntity
 import com.example.mytrackerapp.data.entity.CycleEntity
 import com.example.mytrackerapp.data.entity.DayEntity
 import com.example.mytrackerapp.data.entity.ExerciseEntity
 import com.example.mytrackerapp.domain.CIRCUIT_STRETCH
 import com.example.mytrackerapp.domain.CIRCUIT_WARMUP
+import com.example.mytrackerapp.domain.CircuitPlan
 import com.example.mytrackerapp.domain.Position
+import com.example.mytrackerapp.domain.ProgramPlan
 import com.example.mytrackerapp.domain.ProgramRules
+import com.example.mytrackerapp.domain.parseStepKey
+import com.example.mytrackerapp.domain.resolve
+import com.example.mytrackerapp.domain.steps
 import com.example.mytrackerapp.domain.model.Category
 import com.example.mytrackerapp.domain.model.CircuitProgress
 import com.example.mytrackerapp.domain.model.CircuitView
@@ -88,11 +95,20 @@ fun ExerciseEntity.toDomain(): Exercise = Exercise(
     tracksLoad = tracksLoad,
     defaultLoadKg = defaultLoadKg,
     defaultBandLevel = defaultBandLevel,
-    progressionStep = progressionStep
+    progressionStep = progressionStep,
+    equipment = equipment,
+    level = level,
+    cue = cue,
+    videoTitle = videoTitle,
+    videoChannel = videoChannel
 )
 
+/** A cycle, the rules it was snapshotted under, and its frozen plan (INVARIANT 7). */
+private data class Snapshot(val cycle: CycleEntity, val rules: ProgramRules, val plan: ProgramPlan?)
+
 /**
- * The single funnel for all data access. No DAO is referenced outside this package.
+ * The single funnel for all data access to one program — the program [rulesRepo] is bound
+ * to (Home by default). No DAO is referenced outside this package.
  */
 @OptIn(ExperimentalCoroutinesApi::class)
 class TrackerRepository(
@@ -100,25 +116,29 @@ class TrackerRepository(
     private val cycles: CycleDao,
     private val days: DayDao,
     private val completions: CompletionDao,
-    private val rulesRepo: RulesRepository
+    private val rulesRepo: RulesRepository,
+    /** Optional so the repository tests that predate timed circuits need not pass it. */
+    private val results: CircuitResultDao? = null
 ) {
 
+    val programId: Long get() = rulesRepo.programId
+
     /**
-     * INVARIANT 1: there is always exactly one active cycle.
+     * INVARIANT 1: there is always exactly one active cycle per program.
      *
      * The database callback opens the first one, but this is called defensively at the
      * head of every read so no screen ever has to handle a null cycle. A freshly-created
      * cycle is snapshotted immediately (INVARIANT 7) so it never reads as ruleless.
      */
     suspend fun ensureActiveCycle(): Long = withContext(Dispatchers.IO) {
-        cycles.getActive()?.id ?: run {
-            val id = cycles.insert(CycleEntity(startedAt = System.currentTimeMillis()))
+        cycles.getActive(programId)?.id ?: run {
+            val id = cycles.insert(CycleEntity(startedAt = System.currentTimeMillis(), programId = programId))
             rulesRepo.snapshotRules(id)
             id
         }
     }
 
-    private val activeCycle: Flow<CycleEntity> = cycles.observeActive()
+    private val activeCycle: Flow<CycleEntity> = cycles.observeActive(programId)
         .onEach { if (it == null) ensureActiveCycle() }
         .filterNotNull()
 
@@ -127,6 +147,29 @@ class TrackerRepository(
         activeCycle.flatMapLatest { cycle ->
             rulesRepo.observeRulesFor(cycle.id).map { cycle to it }
         }
+
+    private val activeSnapshot: Flow<Snapshot> = activeRules.flatMapLatest { (cycle, rules) ->
+        rulesRepo.observeCyclePlan(cycle.id).map { Snapshot(cycle, rules, it) }
+    }
+
+    /** The plan circuit a day's [circuit] slot runs, by name — "" for pre-program cycles. */
+    private fun circuitName(plan: ProgramPlan?, rules: ProgramRules, day: Int, circuit: Int): String =
+        plan?.circuits?.getOrNull(rules.planIndexFor(day, circuit))?.name.orEmpty()
+
+    private fun circuitProgress(
+        rules: ProgramRules,
+        plan: ProgramPlan?,
+        week: Int,
+        day: Int,
+        counts: Map<Int, Int>
+    ): List<CircuitProgress> = (1..rules.circuitsFor(week, day)).map { index ->
+        CircuitProgress(
+            index = index,
+            done = counts[index] ?: 0,
+            total = rules.circuitSize(day, index),
+            name = circuitName(plan, rules, day, index)
+        )
+    }
 
     /** INVARIANT 8: orphaned completions stay in the table but never enter a total. */
     private fun validCircuitCounts(
@@ -142,7 +185,7 @@ class TrackerRepository(
 
     /* ------------------------------------------------------------------ today */
 
-    fun observeToday(): Flow<UiState<TodayView>> = activeRules.flatMapLatest { (cycle, rules) ->
+    fun observeToday(): Flow<UiState<TodayView>> = activeSnapshot.flatMapLatest { (cycle, rules, plan) ->
         combine(
             validCircuitCounts(cycle.id, rules),
             days.observeForCycle(cycle.id),
@@ -162,16 +205,11 @@ class TrackerRepository(
                 .filter { it.week == position.week && it.day == position.day }
                 .associate { it.circuit to it.done }
 
+            val circuits = circuitProgress(rules, plan, position.week, position.day, counts)
             val state = DayState(
                 week = position.week,
                 day = position.day,
-                circuits = (1..rules.circuitsForWeek(position.week)).map { index ->
-                    CircuitProgress(
-                        index = index,
-                        done = counts[index] ?: 0,
-                        total = rules.exercisesPerCircuit
-                    )
-                },
+                circuits = circuits,
                 warmUpDone = row?.warmUpDoneAt != null,
                 stretchDone = row?.stretchDoneAt != null,
                 closed = row?.closedAt != null,
@@ -179,7 +217,8 @@ class TrackerRepository(
                 warmUpEnabled = rules.warmUpEnabled,
                 stretchEnabled = rules.stretchEnabled,
                 warmUpCount = rules.warmUpCount,
-                stretchCount = rules.stretchCount
+                stretchCount = rules.stretchCount,
+                uniformCircuits = circuits.map { it.total }.distinct().size <= 1
             )
             UiState.Ready(TodayView.Active(state))
         }
@@ -191,33 +230,29 @@ class TrackerRepository(
      * @param circuit >= 1 for a program circuit, or CIRCUIT_WARMUP / CIRCUIT_STRETCH.
      */
     fun observeCircuit(week: Int, day: Int, circuit: Int): Flow<UiState<CircuitView>> =
-        activeRules.flatMapLatest { (cycle, rules) ->
+        activeSnapshot.flatMapLatest { (cycle, rules, plan) ->
             combine(
                 exercises.observeAll(),
-                completions.observeExerciseIdsIn(cycle.id, week, day, circuit),
+                completions.observeDoneIn(cycle.id, week, day, circuit),
                 validCircuitCounts(cycle.id, rules),
                 days.observeForCycle(cycle.id),
-                rulesRepo.observeProgramOrder(cycle.id)
-            ) { catalog, doneIds, circuitCounts, dayRows, programOrder ->
+                rulesRepo.observePlan()
+            ) { catalog, doneKeys, circuitCounts, dayRows, draftPlan ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
+                val domainCatalog = catalog.map { it.toDomain() }
 
-                val wantedSlot = when (circuit) {
-                    CIRCUIT_WARMUP -> "WARMUP"
-                    CIRCUIT_STRETCH -> "STRETCH"
-                    else -> "PROGRAM"
-                }
                 // INVARIANT 7: a program circuit shows exactly the composition its cycle was
-                // snapshotted with — the same set `exercisesPerCircuit` counted — so archiving,
-                // disabling or adding an exercise mid-cycle can't leave a circuit that never
-                // completes. Routines read the live, enabled catalog.
-                val byId = catalog.associateBy { it.id }
-                val list = if (wantedSlot == "PROGRAM" && programOrder.isNotEmpty()) {
-                    programOrder.mapNotNull { byId[it]?.toDomain() }
-                } else {
-                    catalog.filter { it.slot == wantedSlot && it.enabled && it.archivedAt == null }
-                        .sortedBy { it.sortOrder }
-                        .map { it.toDomain() }
+                // snapshotted with — the same set its size counted — so archiving, disabling
+                // or adding an exercise mid-cycle can't leave a circuit that never completes.
+                // Routines read the live draft plan against the live catalog.
+                val circuitPlan: CircuitPlan? = when (circuit) {
+                    CIRCUIT_WARMUP -> draftPlan.resolve(domainCatalog).warmUp
+                    CIRCUIT_STRETCH -> draftPlan.resolve(domainCatalog).stretch
+                    else -> (plan ?: ProgramPlan.SLOT_DEFAULT.resolve(domainCatalog))
+                        .circuits.getOrNull(rules.planIndexFor(day, circuit))
                 }
+                val steps = circuitPlan?.steps(domainCatalog.associateBy { it.id }).orEmpty()
+                val done = doneKeys.map { it.exerciseId to it.setNumber }.toSet()
 
                 // INVARIANT 4: a day past the current position is a read-only preview,
                 // unless the rules have turned that lock off.
@@ -234,9 +269,12 @@ class TrackerRepository(
                         week = week,
                         day = day,
                         circuit = circuit,
-                        exercises = list,
-                        doneIds = doneIds.toSet(),
-                        editable = editable
+                        exercises = steps.map { it.exercise.copy(id = it.key) },
+                        doneIds = steps.filter { (it.exercise.id to it.set) in done }.map { it.key }.toSet(),
+                        editable = editable,
+                        setLabels = steps.filter { it.sets > 1 }
+                            .associate { it.key to "Set ${it.set} of ${it.sets}" },
+                        plan = circuitPlan.takeIf { circuit >= 1 && plan != null }
                     )
                 )
             }
@@ -300,14 +338,15 @@ class TrackerRepository(
             }
         }
 
+    /** @param stepKey an exercise id, or a [com.example.mytrackerapp.domain.CircuitStep] key. */
     suspend fun setRoutineExerciseDone(
         routineCircuit: Int,
-        exerciseId: String,
+        stepKey: String,
         done: Boolean
     ) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
         val position = currentPosition(cycleId) ?: return@withContext
-        setExerciseDone(position.week, position.day, routineCircuit, exerciseId, done)
+        setExerciseDone(position.week, position.day, routineCircuit, stepKey, done)
     }
 
     /** Sets the day-level flag. Deliberately writes no completions, so skipping works. */
@@ -323,7 +362,7 @@ class TrackerRepository(
 
     /* ---------------------------------------------------------------- program */
 
-    fun observeProgram(): Flow<UiState<List<WeekState>>> = activeRules.flatMapLatest { (cycle, rules) ->
+    fun observeProgram(): Flow<UiState<List<WeekState>>> = activeSnapshot.flatMapLatest { (cycle, rules, plan) ->
         combine(
             validCircuitCounts(cycle.id, rules),
             days.observeForCycle(cycle.id)
@@ -338,7 +377,7 @@ class TrackerRepository(
                 (1..rules.weeks).map { week ->
                     WeekState(
                         week = week,
-                        circuitsPerDay = rules.circuitsForWeek(week),
+                        circuitsPerDay = rules.circuitsFor(week, 1),
                         days = (1..rules.daysPerWeek).map { day ->
                             val p = Position(week, day)
                             val counts = byDay[p].orEmpty().associate { it.circuit to it.done }
@@ -346,15 +385,9 @@ class TrackerRepository(
                                 week = week,
                                 day = day,
                                 done = doneByPosition[p] ?: 0,
-                                total = rules.exercisesPerDay(week),
+                                total = rules.exercisesPerDay(week, day),
                                 closed = p in closed,
-                                circuits = (1..rules.circuitsForWeek(week)).map { index ->
-                                    CircuitProgress(
-                                        index = index,
-                                        done = counts[index] ?: 0,
-                                        total = rules.exercisesPerCircuit
-                                    )
-                                }
+                                circuits = circuitProgress(rules, plan, week, day, counts)
                             )
                         },
                         isCurrent = current?.week == week,
@@ -373,15 +406,22 @@ class TrackerRepository(
 
     /* ------------------------------------------------------------------ stats */
 
+    /**
+     * Stats for this program's cycle. The streak alone is combined across every program's
+     * running cycle — a gym day keeps a home streak alive.
+     */
     fun observeCycleStats(today: () -> LocalDate = { LocalDate.now() }): Flow<UiState<CycleStats>> =
-        activeRules.flatMapLatest { (cycle, rules) ->
+        activeSnapshot.flatMapLatest { (cycle, rules, plan) ->
             combine(
                 validCircuitCounts(cycle.id, rules),
-                completions.observeCompletionTimes(cycle.id, rules.countRoutinesInTotals),
+                combine(
+                    completions.observeCompletionTimes(cycle.id, rules.countRoutinesInTotals),
+                    completions.observeActiveTrainingTimes()
+                ) { mine, all -> mine to all },
                 completions.observeTallies(cycle.id, rules.countRoutinesInTotals),
                 days.observeForCycle(cycle.id),
                 exercises.observeAll()
-            ) { circuitCounts, times, tallies, dayRows, catalog ->
+            ) { circuitCounts, (times, allTimes), tallies, dayRows, catalog ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
 
                 val doneByPosition = dayCountsFrom(circuitCounts)
@@ -397,23 +437,18 @@ class TrackerRepository(
                         week = p.week,
                         day = p.day,
                         done = doneByPosition[p] ?: 0,
-                        total = rules.exercisesPerDay(p.week),
+                        total = rules.exercisesPerDay(p.week, p.day),
                         closed = p in closed,
-                        circuits = (1..rules.circuitsForWeek(p.week)).map { index ->
-                            CircuitProgress(
-                                index = index,
-                                done = counts[index] ?: 0,
-                                total = rules.exercisesPerCircuit
-                            )
-                        }
+                        circuits = circuitProgress(rules, plan, p.week, p.day, counts)
                     )
                 }
 
                 val trainingDates = times.map { trainingDate(it, rules.dayRolloverHour) }.toSet()
+                val anyProgramDates = (times + allTimes).map { trainingDate(it, rules.dayRolloverHour) }.toSet()
 
                 UiState.Ready(
                     CycleStats(
-                        streak = streakDays(trainingDates, today()),
+                        streak = streakDays(anyProgramDates, today()),
                         exercisesDone = heat.sumOf { it.done },
                         exercisesTotal = rules.totalExercisesInCycle(),
                         circuitsDone = heat.sumOf { day -> day.circuits.count { it.isComplete } },
@@ -422,7 +457,7 @@ class TrackerRepository(
                         weeks = (1..rules.weeks).map { week ->
                             WeekState(
                                 week = week,
-                                circuitsPerDay = rules.circuitsForWeek(week),
+                                circuitsPerDay = rules.circuitsFor(week, 1),
                                 days = heat.filter { it.week == week },
                                 isCurrent = current?.week == week,
                                 exercisesPerCircuit = rules.exercisesPerCircuit
@@ -457,7 +492,9 @@ class TrackerRepository(
                     CycleSummary(
                         exercisesDone = exercisesDone,
                         exercisesTotal = rules.totalExercisesInCycle(),
-                        circuitsDone = exercisesDone / rules.exercisesPerCircuit,
+                        circuitsDone = circuitCounts.count {
+                            it.circuit >= 1 && it.done >= rules.circuitSize(it.day, it.circuit)
+                        },
                         circuitsTotal = rules.totalCircuitsInCycle(),
                         daysTrained = trainingDates.size,
                         bestStreak = longestStreak(trainingDates),
@@ -474,13 +511,15 @@ class TrackerRepository(
     fun observeCatalog(): Flow<List<Exercise>> =
         exercises.observeActive().map { all -> all.map { it.toDomain() } }
 
-    /** Catalog entry plus this cycle's history, for the exercise detail screen. */
+    /**
+     * Catalog entry plus its history in every program's running cycle — an exercise can be
+     * in several programs, and the detail screen is about the exercise.
+     */
     fun observeExerciseDetail(id: String): Flow<UiState<ExerciseDetail>> =
-        activeCycle.flatMapLatest { cycle ->
-            combine(
-                exercises.observeAll(),
-                completions.observeAllTimesForExercise(cycle.id, id)
-            ) { catalog, times ->
+        combine(
+            exercises.observeAll(),
+            completions.observeActiveTimesForExercise(id)
+        ) { catalog, times ->
                 if (catalog.isEmpty()) return@combine UiState.Loading
                 val exercise = catalog.firstOrNull { it.id == id }?.toDomain()
                     ?: return@combine UiState.Error("That exercise is no longer in the program.")
@@ -491,13 +530,12 @@ class TrackerRepository(
                         recent = recentTallies(times)
                     )
                 )
-            }
         }
 
     /** Rolling performance summary for the exercise detail screen's performance section. */
     fun observePerformance(exerciseId: String): Flow<PerformanceSummary> =
-        activeRules.flatMapLatest { (cycle, rules) ->
-            completions.observeSetLogs(cycle.id, exerciseId).map { rows ->
+        activeRules.flatMapLatest { (_, rules) ->
+            completions.observeActiveSetLogs(exerciseId).map { rows ->
                 summarise(
                     rows.map { SetLog(it.completedAt, it.reps, it.loadKg, it.holdSeconds, it.rpe) },
                     rolloverHour = rules.dayRolloverHour
@@ -510,10 +548,11 @@ class TrackerRepository(
         week: Int,
         day: Int,
         circuit: Int,
-        exerciseId: String,
+        stepKey: String,
         detail: SetDetail
     ) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
+        val (exerciseId, set) = parseStepKey(stepKey)
         completions.updateDetail(
             cycleId = cycleId,
             week = week,
@@ -525,14 +564,15 @@ class TrackerRepository(
             bandLevel = detail.bandLevel,
             holdSeconds = detail.holdSeconds,
             rpe = detail.rpe,
-            note = detail.note
+            note = detail.note,
+            setNumber = set
         )
     }
 
-    /** Most recently logged detail for an exercise, to pre-fill the next set's sheet. */
-    suspend fun lastDetailFor(exerciseId: String): SetDetail? = withContext(Dispatchers.IO) {
-        val cycleId = ensureActiveCycle()
-        completions.getLastDetail(cycleId, exerciseId)?.let {
+    /** Most recently logged detail for an exercise in any program, to pre-fill the next set's sheet. */
+    suspend fun lastDetailFor(stepKey: String): SetDetail? = withContext(Dispatchers.IO) {
+        ensureActiveCycle()
+        completions.getLastActiveDetail(parseStepKey(stepKey).first)?.let {
             SetDetail(
                 reps = it.reps,
                 loadKg = it.loadKg,
@@ -553,15 +593,17 @@ class TrackerRepository(
 
     /* ------------------------------------------------------------------ writes */
 
+    /** @param stepKey an exercise id, or `id#set` for one set of a multi-set exercise. */
     suspend fun setExerciseDone(
         week: Int,
         day: Int,
         circuit: Int,
-        exerciseId: String,
+        stepKey: String,
         done: Boolean,
         detail: SetDetail? = null
     ) = withContext(Dispatchers.IO) {
         val cycleId = ensureActiveCycle()
+        val (exerciseId, set) = parseStepKey(stepKey)
         ensureDayRow(cycleId, week, day)
         if (done) {
             completions.insert(
@@ -577,12 +619,27 @@ class TrackerRepository(
                     bandLevel = detail?.bandLevel,
                     holdSeconds = detail?.holdSeconds,
                     rpe = detail?.rpe,
-                    note = detail?.note
+                    note = detail?.note,
+                    setNumber = set
                 )
             )
         } else {
-            completions.delete(cycleId, week, day, circuit, exerciseId)
+            completions.delete(cycleId, week, day, circuit, exerciseId, set)
         }
+    }
+
+    /** The recorded AMRAP rounds / for-time seconds of one circuit slot, if any. */
+    fun observeResult(week: Int, day: Int, circuit: Int): Flow<Int?> {
+        val dao = results ?: return flowOf(null)
+        return activeCycle.flatMapLatest { cycle ->
+            dao.observe(cycle.id, week, day, circuit).map { it?.value }
+        }
+    }
+
+    suspend fun saveResult(week: Int, day: Int, circuit: Int, value: Int) = withContext(Dispatchers.IO) {
+        val cycleId = ensureActiveCycle()
+        results?.upsert(CircuitResultEntity(cycleId, week, day, circuit, value, System.currentTimeMillis()))
+        Unit
     }
 
     suspend fun markWarmUpDone(week: Int, day: Int) = withContext(Dispatchers.IO) {
@@ -606,8 +663,8 @@ class TrackerRepository(
 
     /** INVARIANT 7: the new cycle is snapshotted from the current rules draft immediately. */
     suspend fun startNewCycle() = withContext(Dispatchers.IO) {
-        cycles.getActive()?.let { cycles.complete(it.id, System.currentTimeMillis()) }
-        val id = cycles.insert(CycleEntity(startedAt = System.currentTimeMillis()))
+        cycles.getActive(programId)?.let { cycles.complete(it.id, System.currentTimeMillis()) }
+        val id = cycles.insert(CycleEntity(startedAt = System.currentTimeMillis(), programId = programId))
         rulesRepo.snapshotRules(id)
         Unit
     }
@@ -617,6 +674,7 @@ class TrackerRepository(
         val cycleId = ensureActiveCycle()
         completions.deleteForCycle(cycleId)
         days.deleteForCycle(cycleId)
+        results?.deleteForCycle(cycleId)
     }
 
     private suspend fun ensureDayRow(cycleId: Long, week: Int, day: Int) {
@@ -629,10 +687,26 @@ class TrackerRepository(
      * The only recovery path if auto-backup fails. Four weeks of training cannot be
      * regenerated, so this writes everything, not just the active cycle.
      */
-    suspend fun exportJson(): String = withContext(Dispatchers.IO) {
+    suspend fun exportJson(programs: JSONArray = JSONArray()): String = withContext(Dispatchers.IO) {
         val root = JSONObject()
         root.put("exportedAt", System.currentTimeMillis())
-        root.put("schemaVersion", 1)
+        root.put("schemaVersion", 2)
+        root.put("programs", programs)
+
+        // Custom exercises exist nowhere else; the seeded catalog is regenerated by the app.
+        val customArray = JSONArray()
+        exercises.getAll().filter { it.isCustom }.forEach { e ->
+            customArray.put(
+                JSONObject()
+                    .put("id", e.id).put("name", e.name).put("category", e.category)
+                    .put("slot", e.slot).put("muscles", e.muscles).put("instructions", e.instructions)
+                    .put("targetType", e.targetType).put("targetValue", e.targetValue)
+                    .put("perSide", e.perSide).put("videoUrl", e.videoUrl)
+                    .put("equipment", e.equipment).put("level", e.level).put("cue", e.cue)
+                    .put("archived", e.archivedAt != null)
+            )
+        }
+        root.put("customExercises", customArray)
 
         val cycleArray = JSONArray()
         cycles.getAll().forEach { cycle ->
@@ -641,6 +715,8 @@ class TrackerRepository(
                 .put("startedAt", cycle.startedAt)
                 .put("completedAt", cycle.completedAt ?: JSONObject.NULL)
                 .put("isActive", cycle.isActive)
+                .put("programId", cycle.programId)
+                .put("plan", rulesRepo.cyclePlanText(cycle.id))
 
             val completionArray = JSONArray()
             completions.getAllForCycle(cycle.id).forEach { done ->
@@ -650,10 +726,25 @@ class TrackerRepository(
                         .put("day", done.day)
                         .put("circuit", done.circuit)
                         .put("exerciseId", done.exerciseId)
+                        .put("setNumber", done.setNumber)
+                        .put("reps", done.reps ?: JSONObject.NULL)
+                        .put("loadKg", done.loadKg ?: JSONObject.NULL)
+                        .put("bandLevel", done.bandLevel ?: JSONObject.NULL)
+                        .put("holdSeconds", done.holdSeconds ?: JSONObject.NULL)
+                        .put("rpe", done.rpe ?: JSONObject.NULL)
+                        .put("note", done.note ?: JSONObject.NULL)
                         .put("completedAt", done.completedAt)
                 )
             }
             c.put("completions", completionArray)
+            val resultArray = JSONArray()
+            results?.getAllForCycle(cycle.id)?.forEach { r ->
+                resultArray.put(
+                    JSONObject().put("week", r.week).put("day", r.day).put("circuit", r.circuit)
+                        .put("value", r.value).put("recordedAt", r.recordedAt)
+                )
+            }
+            c.put("circuitResults", resultArray)
             cycleArray.put(c)
         }
         root.put("cycles", cycleArray)

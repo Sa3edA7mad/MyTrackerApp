@@ -5,6 +5,7 @@ import com.example.mytrackerapp.data.db.AppDatabase
 import com.example.mytrackerapp.data.prefs.SettingsStore
 import com.example.mytrackerapp.repo.CatalogRepository
 import com.example.mytrackerapp.repo.MeasurementRepository
+import com.example.mytrackerapp.repo.ProgramRepository
 import com.example.mytrackerapp.repo.RulesRepository
 import com.example.mytrackerapp.repo.TrackerRepository
 
@@ -21,12 +22,36 @@ class AppContainer(context: Context) {
 
     val settings: SettingsStore by lazy { SettingsStore(context.applicationContext) }
 
-    val rules: RulesRepository by lazy {
+    /** Home's rules (program 1) — also the source of the app-wide display units. */
+    val rules: RulesRepository by lazy { rulesFor(1) }
+
+    val programs: ProgramRepository by lazy { ProgramRepository(db.programDao(), db.rulesDao()) }
+
+    private val rulesByProgram = mutableMapOf<Long, RulesRepository>()
+    private val repoByProgram = mutableMapOf<Long, TrackerRepository>()
+
+    /** One rules repository per program, created on first use. */
+    @Synchronized
+    fun rulesFor(programId: Long): RulesRepository = rulesByProgram.getOrPut(programId) {
         RulesRepository(
             dao = db.rulesDao(),
             exercises = db.exerciseDao(),
             days = db.dayDao(),
-            completions = db.completionDao()
+            completions = db.completionDao(),
+            programId = programId
+        )
+    }
+
+    /** One tracker repository per program, created on first use. */
+    @Synchronized
+    fun repoFor(programId: Long): TrackerRepository = repoByProgram.getOrPut(programId) {
+        TrackerRepository(
+            exercises = db.exerciseDao(),
+            cycles = db.cycleDao(),
+            days = db.dayDao(),
+            completions = db.completionDao(),
+            rulesRepo = rulesFor(programId),
+            results = db.resultDao()
         )
     }
 
@@ -40,13 +65,6 @@ class AppContainer(context: Context) {
         )
     }
 
-    val repo: TrackerRepository by lazy {
-        TrackerRepository(
-            exercises = db.exerciseDao(),
-            cycles = db.cycleDao(),
-            days = db.dayDao(),
-            completions = db.completionDao(),
-            rulesRepo = rules
-        )
-    }
+    /** Home's repository (program 1), for program-agnostic reads: catalog, exercise history, export. */
+    val repo: TrackerRepository by lazy { repoFor(1) }
 }
