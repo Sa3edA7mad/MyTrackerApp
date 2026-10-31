@@ -410,7 +410,9 @@ fun LogMeasurementsSheet(
     var dateText by remember { mutableStateOf(today) }
     var note by remember { mutableStateOf("") }
     val values = remember { mutableStateOf(mapOf<String, String>()) }
-    val sheetState = rememberModalBottomSheetState()
+    // Fully expanded from the start: with a half-open state the sheet and its scrolling form
+    // fight over the same drag, so the sheet kept bouncing between heights.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
     fun takenAtMillis(): Long =
         runCatching { LocalDate.parse(dateText).atStartOfDay(ZoneId.systemDefault()).toInstant().toEpochMilli() }
