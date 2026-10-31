@@ -395,7 +395,7 @@ interface CompletionDao {
         """SELECT * FROM completions
            WHERE cycleId = :cycleId AND exerciseId = :exerciseId
              AND (reps IS NOT NULL OR loadKg IS NOT NULL OR holdSeconds IS NOT NULL)
-           ORDER BY completedAt DESC LIMIT 1"""
+           ORDER BY completedAt DESC, id DESC LIMIT 1"""
     )
     suspend fun getLastDetail(cycleId: Long, exerciseId: String): CompletionEntity?
 
@@ -405,7 +405,7 @@ interface CompletionDao {
            WHERE exerciseId = :exerciseId
              AND cycleId IN (SELECT id FROM cycles WHERE isActive = 1)
              AND (reps IS NOT NULL OR loadKg IS NOT NULL OR holdSeconds IS NOT NULL)
-           ORDER BY completedAt DESC LIMIT 1"""
+           ORDER BY completedAt DESC, id DESC LIMIT 1"""
     )
     suspend fun getLastActiveDetail(exerciseId: String): CompletionEntity?
 
@@ -413,7 +413,7 @@ interface CompletionDao {
     @Query(
         """SELECT * FROM completions
            WHERE cycleId = :cycleId AND exerciseId = :exerciseId
-           ORDER BY completedAt ASC"""
+           ORDER BY completedAt ASC, id ASC"""
     )
     fun observeSetLogs(cycleId: Long, exerciseId: String): Flow<List<CompletionEntity>>
 
@@ -422,7 +422,7 @@ interface CompletionDao {
         """SELECT * FROM completions
            WHERE exerciseId = :exerciseId
              AND cycleId IN (SELECT id FROM cycles WHERE isActive = 1)
-           ORDER BY completedAt ASC"""
+           ORDER BY completedAt ASC, id ASC"""
     )
     fun observeActiveSetLogs(exerciseId: String): Flow<List<CompletionEntity>>
 }
