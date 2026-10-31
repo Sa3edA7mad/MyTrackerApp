@@ -106,7 +106,10 @@ class ProgramEditViewModel(private val container: AppContainer, val programId: L
 
     fun setActive(active: Boolean) = viewModelScope.launch {
         container.programs.setActive(programId, active)
-            .onSuccess { _message.value = null }
+            .onSuccess {
+                _message.value = null
+                if (active) container.repoFor(programId).refreshUntouchedCycle()
+            }
             .onFailure { _message.value = "Can't turn this program on yet: ${it.message}" }
     }
 

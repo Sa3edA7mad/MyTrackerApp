@@ -301,7 +301,7 @@ private fun Header(day: DayState, onOpenSettings: () -> Unit, onEndDayEarly: () 
             Text("Today", style = MaterialTheme.typography.displayMedium, color = TextPrimary)
             Text(
                 "${day.circuitsTotal} circuit${if (day.circuitsTotal == 1) "" else "s"} · " +
-                    if (day.circuitsTotal == 1) "${day.exercisesTotal} exercises"
+                    if (day.circuitsTotal == 1) "${day.exercisesTotal} exercise${if (day.exercisesTotal == 1) "" else "s"}"
                     else if (day.uniformCircuits) "${day.exercisesPerCircuit} exercises each"
                     else "${day.exercisesTotal} exercises",
                 style = MaterialTheme.typography.bodyMedium,

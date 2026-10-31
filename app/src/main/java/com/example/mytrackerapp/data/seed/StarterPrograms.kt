@@ -101,7 +101,8 @@ object StarterPrograms {
     val ALL = listOf(GYM, CROSSFIT)
 
     /** Rules a brand-new program starts with: like the starters, three days of one circuit. */
-    val NEW_PROGRAM_RULES = THREE_DAY
+    /** Warm-up and stretch start empty, so they start off — turn them on once they have moves. */
+    val NEW_PROGRAM_RULES = THREE_DAY.copy(warmUpEnabled = false, stretchEnabled = false)
 
     /** "Restore defaults" target for [programId]'s rules. Home keeps the shipped 4-week shape. */
     fun defaultRulesFor(programId: Long): ProgramRules =

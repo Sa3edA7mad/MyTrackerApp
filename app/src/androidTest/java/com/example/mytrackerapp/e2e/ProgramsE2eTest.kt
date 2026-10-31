@@ -77,4 +77,26 @@ class ProgramsE2eTest : E2eTest() {
         tapText("Active")
         see("Shown on Today")
     }
+
+    @Test
+    fun pgm23_aNewProgramTurnedOnRunsTheCircuitBuiltBeforeItAndSkipsEmptyRoutines() {
+        openTab("PROGRAMS")
+        tapButton("+ New program")
+        node(hasSetTextAction()).performTextReplacement("Travel")
+        tapText("SAVE")
+        tapText("Circuit A")
+        tapButton("+ Add exercise")
+        node(hasSetTextAction() and androidx.compose.ui.test.hasText("Search", substring = true))
+            .performTextReplacement("burpee")
+        tapText("Burpee")
+        tapButton("Save")
+        tapText("Active")
+        see("Shown on Today")
+        tapDesc("Back")
+        openTab("TODAY")
+        tapText("Travel")
+        see("1 circuit · 1 exercise")
+        dontSee("1 exercises", substring = true)
+        seeButton("Start circuit 1")
+    }
 }

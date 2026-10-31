@@ -138,6 +138,20 @@ class TrackerRepository(
         }
     }
 
+    /**
+     * Re-snapshots the active cycle from the draft when nothing has been done in it yet.
+     * A new program's cycle is opened while its plan is still empty, so without this the
+     * first cycle would ignore every circuit built before the program was turned on.
+     * A cycle with any progress is left alone — that takes "Apply changes".
+     */
+    suspend fun refreshUntouchedCycle() = withContext(Dispatchers.IO) {
+        val cycleId = ensureActiveCycle()
+        if (completions.getDayCounts(cycleId, includeRoutines = true).isEmpty() &&
+            days.getForCycle(cycleId).isEmpty()
+        ) rulesRepo.applyDraftToCycle(cycleId)
+        Unit
+    }
+
     private val activeCycle: Flow<CycleEntity> = cycles.observeActive(programId)
         .onEach { if (it == null) ensureActiveCycle() }
         .filterNotNull()
