@@ -17,8 +17,8 @@ android {
         // Plan v2: lowered from the template's 37 so the app installs on real devices.
         minSdk = 26
         targetSdk = 37
-        versionCode = 1
-        versionName = "1.0"
+        versionCode = 2
+        versionName = "1.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }

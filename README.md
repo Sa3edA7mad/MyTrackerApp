@@ -128,6 +128,35 @@ Two invariants make editing safe:
 See the numbered `INVARIANT n` comments throughout `data/db/`, `data/entity/Entities.kt` and
 `domain/` for the full set (nine in total) and where each one is enforced.
 
+## Release notes
+
+### 1.1.0 (versionCode 2)
+
+**Added**
+- The app version ("Version 1.1.0 (2)") is shown in a new About section at the bottom of Settings.
+
+**Fixed**
+- **New programs ran an empty first cycle.** A new program's cycle was opened while its plan was
+  still empty, so turning the program on showed "1 circuit · 0 exercises" and a circuit that was
+  already complete, with nothing to train. Turning a program on now refreshes its cycle if
+  nothing has been done in it yet; a cycle with progress still needs "Apply changes to current
+  cycle".
+- **New programs forced empty warm-up and stretch screens.** They now start with warm-up and
+  stretch turned off, so you no longer tap through two empty routines every day. Turn them on in
+  Rules once they have moves.
+- **Today read "1 exercises"** for a single exercise; it now reads "1 exercise".
+- **The "Log a measuring session" sheet bounced while scrolling.** It now opens fully expanded,
+  so the form scrolls without fighting the sheet's own drag.
+- **The back button's press highlight was off-centre.** It is now centred on the arrow on every
+  screen that uses it (Settings, Catalog edit, Exercise detail, Rules, Metric history, Metric
+  catalog and Body measurements), without moving the arrow.
+- **"Last logged set" could pre-fill from the wrong set.** Completion history queries ordered by
+  timestamp alone, so two sets saved in the same millisecond could come back in either order.
+  They now break ties by id. This also removes an intermittent failure in `SetDetailTest`.
+
+**Changed**
+- Version bumped from 1.0 (1) to 1.1.0 (2).
+
 ## Known toolchain quirks
 
 - **No Compose icon library is available** on this BOM — icons are drawn as local vector drawables in `app/src/main/res/drawable/ic_*.xml` instead of `androidx.compose.material.icons`.
