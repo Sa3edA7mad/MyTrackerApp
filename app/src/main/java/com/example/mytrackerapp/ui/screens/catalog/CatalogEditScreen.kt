@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
@@ -68,6 +69,7 @@ import com.example.mytrackerapp.ui.components.StickyCtaBar
 import com.example.mytrackerapp.ui.theme.Accent
 import com.example.mytrackerapp.ui.theme.Canvas as CanvasColor
 import com.example.mytrackerapp.ui.theme.Danger
+import com.example.mytrackerapp.ui.theme.BackButtonInset
 import com.example.mytrackerapp.ui.theme.MinTouchTarget
 import com.example.mytrackerapp.ui.theme.MyTrackerAppTheme
 import com.example.mytrackerapp.ui.theme.OnAccent
@@ -315,10 +317,11 @@ fun CatalogEditScreen(
             ) {
                 Box(
                     Modifier
+                        .offset(x = -BackButtonInset)
                         .size(MinTouchTarget)
                         .clip(CircleShape)
                         .clickable(role = Role.Button, onClick = onBack),
-                    contentAlignment = Alignment.CenterStart
+                    contentAlignment = Alignment.Center
                 ) {
                     Icon(
                         painterResource(AppIcons.back),
