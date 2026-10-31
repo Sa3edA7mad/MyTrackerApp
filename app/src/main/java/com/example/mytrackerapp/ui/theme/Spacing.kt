@@ -31,3 +31,10 @@ object Radius {
  * on one screen.
  */
 val MinTouchTarget = 48.dp
+
+/**
+ * How far a 22dp back arrow sits inside its [MinTouchTarget] circle on the left edge:
+ * shifting the circle left by this much centres the press feedback on the arrow without
+ * moving the arrow itself.
+ */
+val BackButtonInset = (MinTouchTarget - 22.dp) / 2
