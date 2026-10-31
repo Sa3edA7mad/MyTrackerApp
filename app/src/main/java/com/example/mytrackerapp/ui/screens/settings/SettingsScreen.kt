@@ -295,6 +295,15 @@ fun SettingsScreen(
                 onClick = { confirmReset = true }
             )
 
+            SectionHeader("About")
+            val context = LocalContext.current
+            val version = remember { appVersion(context) }
+            Text(
+                "Version $version",
+                style = MaterialTheme.typography.bodyMedium,
+                color = TextTertiary
+            )
+
             Spacer(Modifier.height(Spacing.xxl))
         }
     }
@@ -311,6 +320,12 @@ fun SettingsScreen(
         )
     }
 }
+
+/** "1.1.0 (2)" — versionName and versionCode as installed, read at runtime. */
+private fun appVersion(context: Context): String = runCatching {
+    val info = context.packageManager.getPackageInfo(context.packageName, 0)
+    "${info.versionName} (${info.longVersionCode})"
+}.getOrDefault("unknown")
 
 private data class ThemeOption(
     val mode: ThemeMode,
